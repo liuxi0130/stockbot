@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+data/
+.pytest_cache/
+.streamlit/
+*.egg-info/
+dist/
