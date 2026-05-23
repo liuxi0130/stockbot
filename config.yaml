@@ -1,0 +1,29 @@
+llm:
+  provider: deepseek
+  model: deepseek-chat
+  api_key: ${DEEPSEEK_API_KEY}
+  max_tokens: 4096
+  temperature: 0.3
+
+quota:
+  daily_limit: 5
+  admin_password: ${ADMIN_PASS:-admin123}
+
+data:
+  providers:
+    - akshare
+
+ui:
+  default: web
+  cli:
+    show_stock_panel: true
+  web:
+    port: 8501
+    theme: light
+
+memory:
+  history_limit: 200
+  db_path: data/stockbot.db
+
+auth:
+  open_registration: true
