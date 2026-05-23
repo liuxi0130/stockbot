@@ -9,7 +9,15 @@ def temp_db():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     yield path
-    Path(path).unlink(missing_ok=True)
+    try:
+        Path(path).unlink()
+    except (PermissionError, OSError):
+        pass
+    for ext in ["-wal", "-shm"]:
+        try:
+            Path(path + ext).unlink()
+        except (PermissionError, OSError):
+            pass
 
 
 @pytest.fixture
