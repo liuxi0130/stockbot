@@ -1,3 +1,5 @@
+import json
+
 from stockbot.llm.base import LLMProvider
 from stockbot.tools.registry import ToolRegistry
 from stockbot.memory.store import MemoryStore
@@ -43,6 +45,21 @@ class AgentCore:
                 return
 
             if response.tool_calls:
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                            },
+                        }
+                        for tc in response.tool_calls
+                    ],
+                })
                 for tc in response.tool_calls:
                     yield ToolCallStart(name=tc.name, args=tc.arguments)
                     result = await self.tool_registry.execute(tc.name, tc.arguments)

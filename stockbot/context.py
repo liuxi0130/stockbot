@@ -28,6 +28,10 @@ class ContextAssembler:
     def build(self, user_id: str, user_input: str) -> list[dict]:
         system_content = self._system_prompt(user_id)
         recent = self.history.get_recent(user_id, self.history_limit)
+        # Filter tool messages from history — their tool_call_id / tool_calls
+        # context is not persisted, so they'd violate the API constraint that
+        # every tool message must follow an assistant message with tool_calls.
+        recent = [m for m in recent if m.get("role") in ("user", "assistant")]
         return [
             {"role": "system", "content": system_content},
             *recent,

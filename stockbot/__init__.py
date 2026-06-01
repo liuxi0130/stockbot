@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from stockbot.config import load_config
 from stockbot.llm.deepseek import DeepSeekProvider
@@ -7,6 +8,8 @@ from stockbot.tools.stock_price import create_price_tool
 from stockbot.tools.stock_finance import create_finance_tool
 from stockbot.tools.stock_trend import create_trend_tool
 from stockbot.tools.stock_news import create_news_tool
+from stockbot.tools.stock_quant import create_quant_tool
+from stockbot.quant.predictor import QuantPredictor
 from stockbot.data.akshare_provider import AkshareProvider
 from stockbot.memory.store import MemoryStore
 from stockbot.memory.history import ConversationHistory
@@ -15,6 +18,8 @@ from stockbot.context import ContextAssembler
 from stockbot.quota import QuotaManager
 from stockbot.auth import AuthManager
 from stockbot.core import AgentCore
+
+LOGGER = logging.getLogger(__name__)
 
 
 def ensure_data_dir(db_path: str):
@@ -48,6 +53,24 @@ def create_agent(config_path: str = "config.yaml", db_path: str | None = None):
     tool_registry.register(create_finance_tool(data_provider))
     tool_registry.register(create_trend_tool(data_provider))
     tool_registry.register(create_news_tool(data_provider))
+
+    qlib_cfg = cfg.get("qlib", {})
+    if qlib_cfg.get("enabled", True):
+        model_dir = qlib_cfg.get("model_dir", "data/qlib_model")
+        if QuantPredictor.is_available(model_dir):
+            try:
+                data_dir = str(Path(qlib_cfg["data_dir"]).expanduser())
+                quant_predictor = QuantPredictor(
+                    data_dir=data_dir,
+                    model_dir=model_dir,
+                    instruments=qlib_cfg.get("instruments", "csi300"),
+                )
+                tool_registry.register(create_quant_tool(quant_predictor))
+                LOGGER.info("Qlib quant predictor loaded")
+            except Exception as e:
+                LOGGER.warning("Qlib quant predictor failed to load: %s", e)
+        else:
+            LOGGER.info("Qlib model not found at %s; run scripts/setup_qlib.py", model_dir)
 
     memory_cfg = cfg.get("memory", {})
     history = ConversationHistory(store, history_limit=memory_cfg.get("history_limit", 200))

@@ -25,5 +25,11 @@ memory:
   history_limit: 200
   db_path: data/stockbot.db
 
+qlib:
+  data_dir: ~/.qlib/qlib_data/cn_data
+  model_dir: data/qlib_model
+  instruments: csi300
+  enabled: true
+
 auth:
   open_registration: true
