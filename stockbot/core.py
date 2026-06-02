@@ -25,6 +25,9 @@ class AgentCore:
         self.max_turns = max_turns
 
     async def run(self, user_id: str, user_input: str):
+        # Log user query for admin audit
+        self.memory_store.log_activity(user_id, "query", user_input[:200])
+
         qr = self.quota.check(user_id)
         if qr.blocked:
             yield QuotaExceeded(limit=qr.limit, used=qr.used)
@@ -65,6 +68,9 @@ class AgentCore:
                     result = await self.tool_registry.execute(tc.name, tc.arguments)
                     yield ToolCallEnd(name=tc.name, result=result)
                     tool_results_meta.append({"name": tc.name, "result": result})
+                    # Log tool activity for admin audit
+                    detail = str(tc.arguments.get(list(tc.arguments.keys())[0], "")) if tc.arguments else ""
+                    self.memory_store.log_activity(user_id, tc.name, detail)
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,

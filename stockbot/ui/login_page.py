@@ -21,6 +21,9 @@ def render_login(auth: AuthManager):
                 user = auth.login(username, password)
                 if user:
                     st.session_state["user"] = user
+                    store = st.session_state.get("store")
+                    if store:
+                        store.log_activity(user["id"], "login", "Web 登录成功")
                     st.rerun()
                 else:
                     st.error("用户名或密码错误")

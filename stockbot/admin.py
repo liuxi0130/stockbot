@@ -42,6 +42,7 @@ class AdminService:
             total_calls += q["calls"]
 
         active_users = set()
+        week_ago = (date.today() - timedelta(days=7)).isoformat()
         for u in users:
             hist = self.store.get_history(u["id"], 1)
             if hist:
@@ -52,3 +53,13 @@ class AdminService:
             "active_users_7d": len(active_users),
             "total_calls_today": total_calls,
         }
+
+    def get_login_history(self, limit: int = 50) -> list[dict]:
+        return self.store.get_recent_activity(limit=limit)
+
+    def get_search_history(self, limit: int = 100) -> list[dict]:
+        return self.store.get_recent_searches(limit=limit)
+
+    def get_tool_usage(self, limit: int = 50) -> list[dict]:
+        """Get recent stock lookup tool usage from activity log."""
+        return self.store.get_recent_activity(limit=limit)

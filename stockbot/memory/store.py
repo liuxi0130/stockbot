@@ -36,8 +36,18 @@ CREATE TABLE IF NOT EXISTS quota (
     PRIMARY KEY (user_id, date)
 );
 
+CREATE TABLE IF NOT EXISTS activity_log (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    action      TEXT NOT NULL,
+    detail      TEXT DEFAULT '',
+    created_at  TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_conv_user_date ON conversations(user_id, date(created_at));
+CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action);
 """
 
 
@@ -160,3 +170,51 @@ class MemoryStore:
             "ON CONFLICT(user_id, date) DO UPDATE SET approved = approved + ?",
             (user_id, dt, n, n),
         )
+
+    # ── Activity Log ──
+
+    def log_activity(self, user_id: str, action: str, detail: str = ""):
+        mid = str(uuid.uuid4())
+        self._execute(
+            "INSERT INTO activity_log (id, user_id, action, detail) VALUES (?, ?, ?, ?)",
+            (mid, user_id, action, detail),
+        )
+
+    def get_recent_activity(self, user_id: str | None = None, limit: int = 50) -> list[dict]:
+        if user_id:
+            rows = self._fetch_all(
+                "SELECT a.action, a.detail, a.created_at, u.username FROM activity_log a "
+                "JOIN users u ON a.user_id = u.id WHERE a.user_id = ? "
+                "ORDER BY a.created_at DESC LIMIT ?",
+                (user_id, limit),
+            )
+        else:
+            rows = self._fetch_all(
+                "SELECT a.action, a.detail, a.created_at, u.username FROM activity_log a "
+                "JOIN users u ON a.user_id = u.id "
+                "ORDER BY a.created_at DESC LIMIT ?",
+                (limit,),
+            )
+        return [dict(r) for r in rows]
+
+    def get_recent_searches(self, limit: int = 100) -> list[dict]:
+        """Get recent user search queries from conversations."""
+        rows = self._fetch_all(
+            "SELECT c.content, c.created_at, u.username FROM conversations c "
+            "JOIN users u ON c.user_id = u.id "
+            "WHERE c.role = 'user' "
+            "ORDER BY c.created_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(r) for r in rows]
+
+    def get_recent_tool_calls(self, tool_name: str, limit: int = 50) -> list[dict]:
+        """Get recent tool calls by name (e.g. 'search_stock', 'get_realtime_quote')."""
+        rows = self._fetch_all(
+            "SELECT c.content, c.created_at, c.tool_name, u.username FROM conversations c "
+            "JOIN users u ON c.user_id = u.id "
+            "WHERE c.role = 'tool' AND c.tool_name = ? "
+            "ORDER BY c.created_at DESC LIMIT ?",
+            (tool_name, limit),
+        )
+        return [dict(r) for r in rows]
