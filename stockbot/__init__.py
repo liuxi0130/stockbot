@@ -10,6 +10,11 @@ from stockbot.tools.stock_trend import create_trend_tool
 from stockbot.tools.stock_news import create_news_tool
 from stockbot.tools.stock_quant import create_quant_tool
 from stockbot.quant.predictor import QuantPredictor
+from stockbot.index.index_data import AkshareIndexProvider
+from stockbot.index.index_predictor import IndexPredictor
+from stockbot.tools.market_overview import create_market_overview_tool
+from stockbot.tools.index_trend import create_index_trend_tool
+from stockbot.tools.index_predict import create_index_predict_tool
 from stockbot.data.akshare_provider import AkshareProvider
 from stockbot.memory.store import MemoryStore
 from stockbot.memory.history import ConversationHistory
@@ -71,6 +76,25 @@ def create_agent(config_path: str = "config.yaml", db_path: str | None = None):
                 LOGGER.warning("Qlib quant predictor failed to load: %s", e)
         else:
             LOGGER.info("Qlib model not found at %s; run scripts/setup_qlib.py", model_dir)
+
+    # ── Index analysis tools ──────────────────────────────
+    index_provider = AkshareIndexProvider()
+    tool_registry.register(create_market_overview_tool(index_provider))
+    tool_registry.register(create_index_trend_tool(index_provider))
+
+    index_model_cfg = cfg.get("index_model", {})
+    index_model_dir = index_model_cfg.get("model_dir", "data/index_model")
+    ml_enabled = Path(index_model_dir).exists()
+    index_predictor = IndexPredictor(
+        index_provider=index_provider,
+        model_dir=index_model_dir,
+        ml_enabled=ml_enabled,
+    )
+    tool_registry.register(create_index_predict_tool(index_predictor))
+    if ml_enabled:
+        LOGGER.info("Index ML model loaded from %s", index_model_dir)
+    else:
+        LOGGER.info("Index ML model not found; using rules-only prediction")
 
     memory_cfg = cfg.get("memory", {})
     history = ConversationHistory(store, history_limit=memory_cfg.get("history_limit", 200))

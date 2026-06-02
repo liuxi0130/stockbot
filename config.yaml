@@ -31,5 +31,17 @@ qlib:
   instruments: csi300
   enabled: true
 
+index:
+  default_code: "000001"
+  supported_codes:
+    - "000001"
+    - "399001"
+    - "399006"
+
+index_model:
+  model_dir: data/index_model
+  short_term_horizon: 3
+  mid_term_horizon: 20
+
 auth:
   open_registration: true
