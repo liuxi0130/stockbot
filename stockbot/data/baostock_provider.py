@@ -43,7 +43,7 @@ class BaostockProvider(DataProvider):
         end = today.strftime("%Y-%m-%d")
         rs = bs.query_history_k_data_plus(
             _to_bs_code(symbol),
-            "date,code,name,close,preclose,pctChg,volume",
+            "date,code,close,preclose,pctChg,volume",
             start_date=start, end_date=end,
             frequency="d", adjustflag="3",
         )
@@ -52,7 +52,7 @@ class BaostockProvider(DataProvider):
             raise RuntimeError(f"未获取到 {symbol} 的行情数据")
 
         latest = data.iloc[-1]
-        name = latest["name"] if latest["name"] else symbol
+        name = self._safe_name(data, symbol)
         return StockQuote(
             symbol=symbol,
             name=name,
@@ -72,7 +72,7 @@ class BaostockProvider(DataProvider):
 
         rs = bs.query_history_k_data_plus(
             _to_bs_code(symbol),
-            "date,code,name,open,high,low,close,volume",
+            "date,code,open,high,low,close,volume",
             start_date=start, end_date=end,
             frequency="d", adjustflag="3",
         )
@@ -81,7 +81,7 @@ class BaostockProvider(DataProvider):
         if data.empty:
             raise RuntimeError(f"{symbol} 历史数据为空")
 
-        name = data.iloc[-1]["name"] if data.iloc[-1]["name"] else symbol
+        name = self._safe_name(data, symbol)
         result = [
             {
                 "date": row["date"],
@@ -128,6 +128,14 @@ class BaostockProvider(DataProvider):
 
     def get_news(self, symbol: str, limit: int = 5) -> list[dict]:
         return []
+
+    def _safe_name(self, data, symbol: str) -> str:
+        """Get name from 'code' column, or fall back to search."""
+        try:
+            code_val = data.iloc[-1]["code"]
+            return code_val.split(".")[-1] if "." in str(code_val) else str(code_val)
+        except (KeyError, IndexError):
+            return symbol
 
     @staticmethod
     def _safe_float(value) -> float | None:
