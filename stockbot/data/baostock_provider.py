@@ -37,23 +37,26 @@ class BaostockProvider(DataProvider):
             return []
 
     def get_realtime(self, symbol: str) -> StockQuote:
-        """Get latest T+1 close as quote (not true realtime)."""
+        """Get latest available daily data (not true realtime — T+1)."""
         today = datetime.now()
-        # Fetch last 7 days to find most recent trading day
-        start = (today - timedelta(days=10)).strftime("%Y-%m-%d")
-        end = today.strftime("%Y-%m-%d")
-        try:
-            rs = bs.query_history_k_data_plus(
-                _to_bs_code(symbol),
-                "date,code,name,close,preclose,pctChg,volume",
-                start_date=start, end_date=end,
-                frequency="d", adjustflag="3",
-            )
-        except Exception as e:
-            raise RuntimeError(f"获取行情失败: {e}")
+        # Baostock may lag behind current date; try windows of increasing size
+        for window in (10, 30, 90, 365):
+            start = (today - timedelta(days=window)).strftime("%Y-%m-%d")
+            end = today.strftime("%Y-%m-%d")
+            try:
+                rs = bs.query_history_k_data_plus(
+                    _to_bs_code(symbol),
+                    "date,code,name,close,preclose,pctChg,volume",
+                    start_date=start, end_date=end,
+                    frequency="d", adjustflag="3",
+                )
+            except Exception as e:
+                raise RuntimeError(f"获取行情失败: {e}")
 
-        data = rs.get_data()
-        if data.empty:
+            data = rs.get_data()
+            if not data.empty:
+                break
+        else:
             raise RuntimeError(f"未获取到 {symbol} 的行情数据")
 
         latest = data.iloc[-1]
@@ -71,7 +74,8 @@ class BaostockProvider(DataProvider):
         period_days = {"1m": 30, "3m": 90, "6m": 180, "1y": 250}
         days = period_days.get(period, 90)
         today = datetime.now()
-        start = (today - timedelta(days=days * 2)).strftime("%Y-%m-%d")
+        # Fetch generously, then tail to requested days
+        start = (today - timedelta(days=days * 3)).strftime("%Y-%m-%d")
         end = today.strftime("%Y-%m-%d")
 
         try:
