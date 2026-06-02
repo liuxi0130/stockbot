@@ -208,6 +208,13 @@ class MemoryStore:
         )
         return [dict(r) for r in rows]
 
+    def cleanup_old_activity(self, days: int = 1):
+        """Delete activity logs older than N days."""
+        self._execute(
+            "DELETE FROM activity_log WHERE created_at < datetime('now', ?)",
+            (f"-{days} days",),
+        )
+
     def get_recent_tool_calls(self, tool_name: str, limit: int = 50) -> list[dict]:
         """Get recent tool calls by name (e.g. 'search_stock', 'get_realtime_quote')."""
         rows = self._fetch_all(

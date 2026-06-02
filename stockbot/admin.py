@@ -9,6 +9,8 @@ class AdminService:
         self.store = store
         self.quota = quota
         self.auth = auth
+        # Cleanup old activity logs on init
+        self.store.cleanup_old_activity(days=1)
 
     def list_users_with_stats(self) -> list[dict]:
         today = date.today().isoformat()
