@@ -96,11 +96,9 @@ class BaostockProvider(DataProvider):
         return StockHistory(symbol=symbol, name=name, data=result)
 
     def get_financial(self, symbol: str) -> dict:
-        """Baostock basic financial (latest year, Q4)."""
-        import re
+        """Baostock quarterly profit data — ROE, EPS, net profit."""
         try:
             year = datetime.now().year
-            # Try current year Q1, then fall back to previous years
             for y in range(year, year - 4, -1):
                 for q in ["4", "3", "2", "1"]:
                     rs = bs.query_profit_data(
@@ -113,13 +111,15 @@ class BaostockProvider(DataProvider):
                         rows.append(rs.get_row_data())
                     if rows:
                         r = rows[0]
+                        # Field indices: 0=code,1=pubDate,2=statDate,3=roeAvg,
+                        # 4=npMargin,5=gpMargin,6=netProfit,7=epsTTM,8=MBRevenue
                         return {
-                            "pe": self._safe_float(r[12]) if len(r) > 12 else None,
-                            "pb": self._safe_float(r[13]) if len(r) > 13 else None,
-                            "roe": self._safe_float(r[8]) if len(r) > 8 else None,
-                            "eps": self._safe_float(r[10]) if len(r) > 10 else None,
+                            "pe": None,    # not available in profit_data
+                            "pb": None,    # not available in profit_data
+                            "roe": self._safe_float(r[3]) if len(r) > 3 else None,
+                            "eps": self._safe_float(r[7]) if len(r) > 7 else None,
                             "revenue_growth": None,
-                            "net_profit": None,
+                            "net_profit": self._safe_float(r[6]) if len(r) > 6 else None,
                             "net_profit_growth": None,
                         }
             return {}
