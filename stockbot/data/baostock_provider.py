@@ -32,6 +32,24 @@ class BaostockProvider(DataProvider):
                     symbol = code[3:]
                     market = "SZ"
                 rows.append({"symbol": symbol, "name": name, "market": market})
+
+            # Fallback: if query looks like a stock code but no name match, verify via K-line
+            if not rows and query.isdigit() and len(query) == 6:
+                try:
+                    bs_code = _to_bs_code(query)
+                    rs2 = bs.query_history_k_data_plus(
+                        bs_code, "date,close",
+                        start_date=(datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
+                        end_date=datetime.now().strftime("%Y-%m-%d"),
+                        frequency="d", adjustflag="3",
+                    )
+                    if rs2.get_data().empty:
+                        return []
+                except Exception:
+                    return []
+                market = "SH" if query.startswith(("6", "68", "9")) else "SZ"
+                return [{"symbol": query, "name": query, "market": market}]
+
             return rows[:10]
         except Exception:
             return []
