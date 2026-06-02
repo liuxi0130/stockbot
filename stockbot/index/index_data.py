@@ -1,3 +1,10 @@
+"""Index/market data abstraction and Akshare implementation.
+
+ABC and implementation are co-located in this single module for simplicity
+(single-provider case). If additional providers are added, the ABC should be
+split into its own module under stockbot/index/abstract.py.
+"""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -95,8 +102,9 @@ class AkshareIndexProvider(IndexDataProvider):
                 down_count=int(r.get("下跌家数", 0)),
                 flat_count=int(r.get("平盘家数", 0)),
                 total_turnover=float(r.get("成交额", 0)) / 1e8,
-                limit_up=0,
-                limit_down=0,
+                limit_up=0,      # Not populated by AkshareIndexProvider (spot endpoint
+	                             # from akshare does not provide limit up/down data)
+                limit_down=0,    # See note above
             )
         except Exception as e:
             raise RuntimeError(f"获取市场宽度失败: {e}")
@@ -116,7 +124,7 @@ class AkshareIndexProvider(IndexDataProvider):
                     "leading_stock": row.get("领涨股票", ""),
                     "rank": "top",
                 })
-            for _, row in bottom.iterrows()[::-1]:
+            for _, row in list(bottom.iterrows())[::-1]:
                 result.append({
                     "name": row["板块名称"],
                     "change_pct": float(row["涨跌幅"]),
@@ -124,15 +132,16 @@ class AkshareIndexProvider(IndexDataProvider):
                     "rank": "bottom",
                 })
             return result
-        except Exception:
-            return []
+        except Exception as e:
+            raise RuntimeError(f"获取板块表现数据失败: {e}")
 
     def get_index_history(self, index_code: str, period: str = "3m") -> list[dict]:
         import akshare as ak
         period_days = {"1m": 30, "3m": 90, "6m": 180, "1y": 250}
         days = period_days.get(period, 90)
+        prefix = "sz" if not index_code.startswith(("6", "68", "9")) else "sh"
         try:
-            df = ak.stock_zh_index_daily_em(symbol=f"sh{index_code}")
+            df = ak.stock_zh_index_daily_em(symbol=f"{prefix}{index_code}")
             data = []
             for _, row in df.tail(days).iterrows():
                 data.append({
@@ -153,6 +162,9 @@ class AkshareIndexProvider(IndexDataProvider):
             df = ak.stock_news_em(symbol="000001")
             if df.empty:
                 return []
+            # Column mapping uses fuzzy name matching because akshare's column
+            # names are in Chinese and may vary across versions. We search for
+            # substrings like "标题", "来源", "时间", "链接" to stay version-resilient.
             col_map = {}
             for c in df.columns:
                 if "标题" in c:
@@ -173,4 +185,4 @@ class AkshareIndexProvider(IndexDataProvider):
                 for _, row in df.head(limit).iterrows()
             ]
         except Exception:
-            return []
+            raise RuntimeError("获取指数新闻失败")
