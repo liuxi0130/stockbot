@@ -10,19 +10,19 @@ from stockbot.memory.profile import ProfileManager
 from stockbot.events import TextDelta, TextDone, ToolCallStart, ToolCallEnd, Error, QuotaExceeded
 
 
-WELCOME = """[bold cyan]StockBot[/] -- A-share AI Analysis Assistant (v0.1.0)
+WELCOME = """[bold cyan]StockBot[/] — A 股智能投资分析助手 (v0.1.0)
 
-Type your question to start, /help for commands, /exit to quit"""
+输入问题开始分析，/help 查看命令，/exit 退出"""
 
-HELP_TEXT = """[bold]Commands:[/]
-  /help       Show this help
-  /tools      List all tools
-  /watch CODE Add stock to watchlist
-  /portfolio  View watchlist
-  /quota      Check daily usage
-  /clear      Clear session context
-  /admin approve N  Approve extra quota
-  /exit       Quit"""
+HELP_TEXT = """[bold]命令列表:[/]
+  /help         显示帮助
+  /tools        列出所有工具
+  /watch 代码    添加自选股
+  /portfolio    查看自选股
+  /quota        查看今日用量
+  /clear        清除对话上下文
+  /admin approve N  审批额外额度
+  /exit         退出"""
 
 PROMPT_CHAR = "> "
 
@@ -46,7 +46,7 @@ class CLIUI:
             try:
                 user_input = self.console.input(f"[bold white]{PROMPT_CHAR}[/] ")
             except (EOFError, KeyboardInterrupt):
-                self.console.print("\nGoodbye!")
+                self.console.print("\n再见！")
                 break
 
             if not user_input.strip():
@@ -64,46 +64,46 @@ class CLIUI:
 
         if op == "/exit":
             self.running = False
-            self.console.print("Goodbye!")
+            self.console.print("再见！")
         elif op == "/help":
             self.console.print(HELP_TEXT)
         elif op == "/tools":
             self.console.print(self.agent.tool_registry.describe())
         elif op == "/watch" and len(parts) > 1:
             self.profile.add_favorite(self.user_id, parts[1])
-            self.console.print(f"[green]Added {parts[1]} to watchlist[/]")
+            self.console.print(f"[green]已将 {parts[1]} 加入自选股[/]")
         elif op == "/portfolio":
             favs = self.profile.get_favorites(self.user_id)
             if favs:
-                self.console.print(f"[bold]Watchlist:[/] {', '.join(favs)}")
+                self.console.print(f"[bold]自选股:[/] {', '.join(favs)}")
             else:
-                self.console.print("No watchlist. Use /watch CODE to add")
+                self.console.print("暂无自选股。使用 /watch 代码 添加")
         elif op == "/quota":
             qr = self.quota.check(self.user_id)
             self.console.print(
-                f"[bold]Daily usage:[/] {qr.used}/{qr.limit}  (remaining {qr.remain})"
+                f"[bold]今日用量:[/] {qr.used}/{qr.limit}  (剩余 {qr.remain})"
             )
         elif op == "/clear":
-            self.console.print("[yellow]Session context cleared[/]")
+            self.console.print("[yellow]对话上下文已清除[/]")
         elif op == "/admin":
             self._handle_admin(parts)
         else:
-            self.console.print(f"[red]Unknown command: {op}[/]")
+            self.console.print(f"[red]未知命令: {op}[/]")
 
     def _handle_admin(self, parts: list[str]):
         if len(parts) < 2:
-            self.console.print("Usage: /admin approve <n>")
+            self.console.print("用法: /admin approve <次数>")
             return
         sub = parts[1].lower()
         if sub == "approve" and len(parts) > 2:
             try:
                 n = int(parts[2])
                 self.quota.approve(self.user_id, n)
-                self.console.print(f"[green]Approved {n} extra calls[/]")
+                self.console.print(f"[green]已审批 {n} 次额外调用[/]")
             except ValueError:
-                self.console.print("[red]Invalid number[/]")
+                self.console.print("[red]请输入有效数字[/]")
         else:
-            self.console.print("Usage: /admin approve <n>")
+            self.console.print("用法: /admin approve <次数>")
 
     async def _chat(self, user_input: str):
         response_text = ""
@@ -111,8 +111,8 @@ class CLIUI:
         async for evt in self.agent.run(self.user_id, user_input):
             if isinstance(evt, QuotaExceeded):
                 self.console.print(
-                    f"\n[red]Daily quota exhausted ({evt.used}/{evt.limit})[/]\n"
-                    "Contact admin for more quota, or wait until tomorrow."
+                    f"\n[red]今日免费额度已用完 ({evt.used}/{evt.limit})[/]\n"
+                    "请联系管理员提额，或等待明天自动重置。"
                 )
                 return
 
@@ -123,7 +123,7 @@ class CLIUI:
                 self.console.print()
                 self.console.print(Markdown(response_text))
                 qr = self.quota.check(self.user_id)
-                self.console.print(f"[dim]Used {qr.used}/{qr.limit} today[/]")
+                self.console.print(f"[dim]今日已用 {qr.used}/{qr.limit} 次[/]")
 
             if isinstance(evt, ToolCallStart):
                 self.console.print(f"  [yellow]🔧 {evt.name}(...)[/]", end="")

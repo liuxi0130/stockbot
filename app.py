@@ -9,7 +9,7 @@ from stockbot.ui.admin_page import render_admin
 
 
 def main():
-    st.set_page_config(page_title="StockBot", page_icon=":chart:", layout="wide")
+    st.set_page_config(page_title="StockBot — A股智能投资分析助手", page_icon="📈", layout="wide")
 
     if "agent" not in st.session_state:
         agent, store, auth, cfg = create_agent()
