@@ -39,24 +39,16 @@ class BaostockProvider(DataProvider):
     def get_realtime(self, symbol: str) -> StockQuote:
         """Get latest available daily data (not true realtime — T+1)."""
         today = datetime.now()
-        # Baostock may lag behind current date; try windows of increasing size
-        for window in (10, 30, 90, 365):
-            start = (today - timedelta(days=window)).strftime("%Y-%m-%d")
-            end = today.strftime("%Y-%m-%d")
-            try:
-                rs = bs.query_history_k_data_plus(
-                    _to_bs_code(symbol),
-                    "date,code,name,close,preclose,pctChg,volume",
-                    start_date=start, end_date=end,
-                    frequency="d", adjustflag="3",
-                )
-            except Exception as e:
-                raise RuntimeError(f"获取行情失败: {e}")
-
-            data = rs.get_data()
-            if not data.empty:
-                break
-        else:
+        start = (today - timedelta(days=400)).strftime("%Y-%m-%d")
+        end = today.strftime("%Y-%m-%d")
+        rs = bs.query_history_k_data_plus(
+            _to_bs_code(symbol),
+            "date,code,name,close,preclose,pctChg,volume",
+            start_date=start, end_date=end,
+            frequency="d", adjustflag="3",
+        )
+        data = rs.get_data()
+        if data.empty:
             raise RuntimeError(f"未获取到 {symbol} 的行情数据")
 
         latest = data.iloc[-1]
@@ -78,15 +70,12 @@ class BaostockProvider(DataProvider):
         start = (today - timedelta(days=days * 3)).strftime("%Y-%m-%d")
         end = today.strftime("%Y-%m-%d")
 
-        try:
-            rs = bs.query_history_k_data_plus(
-                _to_bs_code(symbol),
-                "date,code,name,open,high,low,close,volume",
-                start_date=start, end_date=end,
-                frequency="d", adjustflag="3",
-            )
-        except Exception as e:
-            raise RuntimeError(f"获取历史数据失败: {e}")
+        rs = bs.query_history_k_data_plus(
+            _to_bs_code(symbol),
+            "date,code,name,open,high,low,close,volume",
+            start_date=start, end_date=end,
+            frequency="d", adjustflag="3",
+        )
 
         data = rs.get_data()
         if data.empty:
