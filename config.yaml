@@ -6,7 +6,7 @@ llm:
   temperature: 0.3
 
 quota:
-  daily_limit: 5
+  daily_limit: 50
   admin_password: ${ADMIN_PASS:-admin123}
 
 data:

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     username    TEXT UNIQUE NOT NULL,
     password    TEXT NOT NULL,
     role        TEXT DEFAULT 'user',
-    daily_quota INTEGER DEFAULT 5,
+    daily_quota INTEGER DEFAULT 50,
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
