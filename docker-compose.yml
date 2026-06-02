@@ -9,6 +9,7 @@ services:
       - "8501:8501"
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - TUSHARE_TOKEN=${TUSHARE_TOKEN}
       - ADMIN_PASS=${ADMIN_PASS:-admin123}
     volumes:
       - ./data:/app/data           # persist SQLite DB
