@@ -57,9 +57,9 @@ class IndexAnalyzer:
         vol_ma5 = self._calc_ma(volumes, 5)
 
         last_close = closes[-1]
-        ma5_val = ma5[-1] or last_close
-        ma10_val = ma10[-1] or last_close
-        ma20_val = ma20[-1] or last_close
+        ma5_val = ma5[-1] if ma5[-1] is not None else last_close
+        ma10_val = ma10[-1] if ma10[-1] is not None else last_close
+        ma20_val = ma20[-1] if ma20[-1] is not None else last_close
         ma60_val = ma60[-1]
         rsi_val = rsi[-1] if rsi[-1] is not None else 50
         macd_dif_val = dif[-1] or 0
@@ -113,19 +113,32 @@ class IndexAnalyzer:
             bullish_target = f"{p.last_price * 1.03:.0f}-{p.last_price * 1.08:.0f}"
             bearish_cond = [f"跌破 20 日均线 ({p.ma20:.0f})", "MACD 死叉"]
             bearish_target = f"{p.support_level or p.last_price * 0.95:.0f}"
+            neutral_cond = ["上涨中继震荡", "大盘横盘整理"]
             neutral_target = f"{p.last_price * 0.98:.0f}-{p.last_price * 1.02:.0f}"
         elif p.base_scenario == "bearish":
             bearish_cond = ["当前空头趋势延续", "成交量持续萎缩"]
             bearish_target = f"{p.support_level or p.last_price * 0.92:.0f}"
             bullish_cond = [f"放量突破 10 日均线 ({p.ma10:.0f})", "MACD 金叉"]
             bullish_target = f"{p.last_price * 1.02:.0f}-{p.last_price * 1.06:.0f}"
+            neutral_cond = ["下跌中继震荡", "大盘横盘整理"]
             neutral_target = f"{p.last_price * 0.98:.0f}-{p.last_price * 1.02:.0f}"
         else:
             bullish_cond = ["放量突破震荡区间上沿"]
             bullish_target = f"{p.resistance_level or p.last_price * 1.05:.0f}-{p.last_price * 1.10:.0f}"
             bearish_cond = ["放量跌破震荡区间下沿"]
             bearish_target = f"{p.support_level or p.last_price * 0.90:.0f}"
+            neutral_cond = ["维持箱体震荡", "大盘横盘 + 无重大消息"]
             neutral_target = f"{p.support_level or p.last_price * 0.95:.0f}-{p.resistance_level or p.last_price * 1.05:.0f}"
+
+        # Enrich conditions with RSI/volume context
+        if p.overbought:
+            bearish_cond.append("RSI超买")
+        if p.oversold:
+            bullish_cond.append("RSI超卖")
+        if p.vol_ratio > 1.5:
+            bullish_cond.append("放量")
+        if p.vol_ratio < 0.5:
+            neutral_cond.append("缩量")
 
         sup_parts = []
         res_parts = []
@@ -155,6 +168,7 @@ class IndexAnalyzer:
             f"\n│   目标: {bullish_target}\n"
             f"├──────────────────────────────────────────────────┤\n"
             f"│ 🟡 中性情景                                        │\n"
+            f"│   条件: {'、'.join(neutral_cond)}\n"
             f"│   区间: {neutral_target}\n"
             f"├──────────────────────────────────────────────────┤\n"
             f"│ 🔴 悲观情景                                        │\n"
@@ -230,7 +244,7 @@ class IndexAnalyzer:
     def _find_levels(closes: list[float]) -> tuple:
         """Find nearest support/resistance from historical price levels."""
         last = closes[-1]
-        sorted_levels = sorted(set(round(c, 0) for c in closes), reverse=True)
+        sorted_levels = sorted(set(closes), reverse=True)
         resistance = None
         support = None
         for lvl in sorted_levels:

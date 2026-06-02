@@ -47,7 +47,7 @@ class TestIndexAnalyzer:
         analyzer = IndexAnalyzer()
         data = make_sample_ohlcv(60, "down")
         result = analyzer.analyze(data, index_name="上证指数", index_code="000001")
-        assert result.base_scenario in ("bearish", "neutral")
+        assert result.base_scenario == "bearish"
         assert result.rsi < 60
 
     def test_insufficient_data_raises(self):
@@ -58,7 +58,7 @@ class TestIndexAnalyzer:
 
     def test_result_contains_support_resistance(self):
         analyzer = IndexAnalyzer()
-        data = make_sample_ohlcv(60, "up")
+        data = make_sample_ohlcv(60, "neutral")
         result = analyzer.analyze(data, index_name="上证指数", index_code="000001")
         assert result.support_level is not None
         assert result.resistance_level is not None
@@ -78,5 +78,7 @@ class TestIndexAnalyzer:
         result = analyzer.analyze(data, index_name="上证指数", index_code="000001")
         output = analyzer.format_output(result, period="3m")
         assert "上证指数" in output
-        assert "乐观" in output or "中性" in output or "悲观" in output
+        assert "乐观" in output
+        assert "中性" in output
+        assert "悲观" in output
         assert "⚠️" in output or "仅供参考" in output or "投资建议" in output
