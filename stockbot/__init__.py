@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from stockbot.config import load_config
 from stockbot.llm.deepseek import DeepSeekProvider
@@ -16,6 +17,7 @@ from stockbot.tools.market_overview import create_market_overview_tool
 from stockbot.tools.index_trend import create_index_trend_tool
 from stockbot.tools.index_predict import create_index_predict_tool
 from stockbot.data.akshare_provider import AkshareProvider
+from stockbot.data.tushare_provider import TushareProvider
 from stockbot.memory.store import MemoryStore
 from stockbot.memory.history import ConversationHistory
 from stockbot.memory.profile import ProfileManager
@@ -42,7 +44,13 @@ def create_agent(config_path: str = "config.yaml", db_path: str | None = None):
     store = MemoryStore(db_path)
     store.init_schema()
 
-    data_provider = AkshareProvider()
+    tushare_token = os.environ.get("TUSHARE_TOKEN", "")
+    if tushare_token:
+        data_provider = TushareProvider(token=tushare_token)
+        LOGGER.info("Using TushareProvider for stock data")
+    else:
+        data_provider = AkshareProvider()
+        LOGGER.info("Using AkshareProvider for stock data (fallback)")
 
     llm_cfg = cfg.get("llm", {})
     llm = DeepSeekProvider(
