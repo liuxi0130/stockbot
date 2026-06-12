@@ -1,5 +1,33 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from stockbot.auth import AuthManager
+
+
+COOKIE_NAME = "stockbot_session"
+
+
+def _set_session_cookie(token: str):
+    """Inject JS to set a persistent cookie in the browser (30 days)."""
+    components.html(f"""
+    <script>
+    (function() {{
+        var d = new Date();
+        d.setTime(d.getTime() + (30 * 24 * 60 * 60 * 1000));
+        document.cookie = "{COOKIE_NAME}=" + "{token}" + ";expires=" + d.toUTCString() + ";path=/;SameSite=Lax";
+    }})();
+    </script>
+    """, height=0)
+
+
+def _clear_session_cookie():
+    """Inject JS to clear the session cookie."""
+    components.html(f"""
+    <script>
+    (function() {{
+        document.cookie = "{COOKIE_NAME}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Lax";
+    }})();
+    </script>
+    """, height=0)
 
 
 def render_login(auth: AuthManager):
@@ -21,6 +49,10 @@ def render_login(auth: AuthManager):
                 user = auth.login(username, password)
                 if user:
                     st.session_state["user"] = user
+                    # Create persistent session token and set cookie
+                    token = auth.create_session(user["id"])
+                    st.session_state["session_token"] = token
+                    _set_session_cookie(token)
                     store = st.session_state.get("store")
                     if store:
                         store.log_activity(user["id"], "login", "Web 登录成功")

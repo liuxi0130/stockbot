@@ -24,7 +24,7 @@ class TestMemoryStore:
         user = store.get_user("testuser")
         assert user["username"] == "testuser"
         assert user["role"] == "user"
-        assert user["daily_quota"] == 5
+        assert user["daily_quota"] == 50
 
     def test_get_user_returns_none_for_missing(self, store):
         assert store.get_user("noone") is None
@@ -95,3 +95,37 @@ class TestMemoryStore:
         store.update_user_quota(uid, 20)
         user = store.get_user_by_id(uid)
         assert user["daily_quota"] == 20
+
+    def test_create_and_get_valid_session(self, store):
+        uid = store.create_user("sess_user", "pw", "user")
+        token = "test-token-123"
+        expires = "2099-12-31 23:59:59"
+        store.create_session(uid, token, expires)
+        session = store.get_session(token)
+        assert session is not None
+        assert session["user_id"] == uid
+        assert session["token"] == token
+
+    def test_expired_session_returns_none(self, store):
+        uid = store.create_user("exp_user", "pw", "user")
+        token = "expired-token"
+        expires = "2020-01-01 00:00:00"
+        store.create_session(uid, token, expires)
+        session = store.get_session(token)
+        assert session is None
+
+    def test_delete_session(self, store):
+        uid = store.create_user("del_user", "pw", "user")
+        token = "del-token"
+        expires = "2099-12-31 23:59:59"
+        store.create_session(uid, token, expires)
+        store.delete_session(token)
+        assert store.get_session(token) is None
+
+    def test_cleanup_expired_sessions(self, store):
+        uid = store.create_user("cln_user", "pw", "user")
+        store.create_session(uid, "good", "2099-12-31 23:59:59")
+        store.create_session(uid, "bad", "2020-01-01 00:00:00")
+        store.cleanup_expired_sessions()
+        assert store.get_session("good") is not None
+        assert store.get_session("bad") is None

@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS activity_log (
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+    token       TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    created_at  TEXT DEFAULT (datetime('now')),
+    expires_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_conv_user_date ON conversations(user_id, date(created_at));
 CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id, created_at);
@@ -207,6 +214,28 @@ class MemoryStore:
             (limit,),
         )
         return [dict(r) for r in rows]
+
+    # ── Sessions ──
+
+    def create_session(self, user_id: str, token: str, expires_at: str):
+        self._execute(
+            "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user_id, expires_at),
+        )
+
+    def get_session(self, token: str) -> dict | None:
+        row = self._fetch_one(
+            "SELECT token, user_id, expires_at FROM sessions "
+            "WHERE token = ? AND expires_at > datetime('now')",
+            (token,),
+        )
+        return dict(row) if row else None
+
+    def delete_session(self, token: str):
+        self._execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+    def cleanup_expired_sessions(self):
+        self._execute("DELETE FROM sessions WHERE expires_at <= datetime('now')")
 
     def cleanup_old_activity(self, days: int = 1):
         """Delete activity logs older than N days."""

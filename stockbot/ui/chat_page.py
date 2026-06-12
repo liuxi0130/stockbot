@@ -1,9 +1,11 @@
 import asyncio
 import streamlit as st
+import streamlit.components.v1 as components
 from stockbot.core import AgentCore
 from stockbot.quota import QuotaManager
 from stockbot.memory.profile import ProfileManager
 from stockbot.events import TextDelta, ToolCallStart, ToolCallEnd, Error, QuotaExceeded
+from stockbot.ui.login_page import COOKIE_NAME, _clear_session_cookie
 
 
 def render_chat(agent: AgentCore, quota: QuotaManager, profile: ProfileManager, user: dict):
@@ -55,7 +57,17 @@ def render_chat(agent: AgentCore, quota: QuotaManager, profile: ProfileManager, 
 
         st.divider()
         if st.button("🚪 退出登录", use_container_width=True):
+            # Delete session from DB
+            token = st.session_state.get("session_token")
+            auth = st.session_state.get("auth")
+            if token and auth:
+                auth.delete_session(token)
+            # Clear cookie via JS
+            _clear_session_cookie()
+            # Clear session state
             del st.session_state["user"]
+            if "session_token" in st.session_state:
+                del st.session_state["session_token"]
             if "messages" in st.session_state:
                 del st.session_state["messages"]
             st.rerun()

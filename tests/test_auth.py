@@ -52,3 +52,21 @@ class TestAuthManager:
         user = store.get_user("testuser")
         assert user["password"] != "mypassword"
         assert bcrypt.checkpw("mypassword".encode(), user["password"].encode())
+
+    def test_create_and_validate_session(self, store, auth):
+        uid = auth.register("sess_user", "pw")
+        token = auth.create_session(uid)
+        assert token is not None
+        user = auth.validate_session(token)
+        assert user is not None
+        assert user["username"] == "sess_user"
+
+    def test_validate_invalid_session_returns_none(self, store, auth):
+        user = auth.validate_session("nonexistent-token")
+        assert user is None
+
+    def test_delete_session(self, store, auth):
+        uid = auth.register("del_user", "pw")
+        token = auth.create_session(uid)
+        auth.delete_session(token)
+        assert auth.validate_session(token) is None
