@@ -7,6 +7,7 @@ from stockbot.admin import AdminService
 from stockbot.ui.login_page import render_login, COOKIE_NAME, _set_session_cookie, _clear_session_cookie
 from stockbot.ui.chat_page import render_chat
 from stockbot.ui.admin_page import render_admin
+from stockbot.ui.worldcup_page import render_worldcup
 
 
 def _check_persistent_session(auth):
@@ -103,14 +104,16 @@ def main():
     user = st.session_state.user
 
     if user.get("role") == "admin":
-        page = st.sidebar.radio("Navigation", ["Chat", "Admin"])
+        page = st.sidebar.radio("Navigation", ["💬 Chat", "⚽ 世界杯", "🔧 Admin"])
     else:
-        page = "Chat"
+        page = st.sidebar.radio("Navigation", ["💬 Chat", "⚽ 世界杯"])
 
-    if page == "Chat":
+    if page == "💬 Chat":
         render_chat(st.session_state.agent, st.session_state.agent.quota,
                     st.session_state.agent.profile, user)
-    elif page == "Admin":
+    elif page == "⚽ 世界杯":
+        render_worldcup()
+    elif page == "🔧 Admin":
         render_admin(st.session_state.admin_svc, st.session_state.agent.quota)
 
 
