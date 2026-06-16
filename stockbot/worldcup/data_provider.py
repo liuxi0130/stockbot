@@ -1,7 +1,6 @@
 """World Cup match data provider — fetches today's matches and odds from
 Chinese sports lottery APIs (sporttery.cn → 500.com fallback)."""
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
