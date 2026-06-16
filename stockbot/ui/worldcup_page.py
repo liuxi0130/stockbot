@@ -202,28 +202,75 @@ def _render_strategy_section(amount: float):
                 st.caption(desc)
 
                 if s.total_stake > 0:
+                    # Separate singles from parlays
+                    singles = [b for b in s.bets if not b.parlay_legs]
+                    parlays = [b for b in s.bets if b.parlay_legs]
+
+                    # Max potential return: sum of stake * odds for all bets
+                    max_return = sum(b.stake * b.odds for b in s.bets)
+
                     st.metric("投入", f"{s.total_stake:.0f} 元")
                     st.metric(
                         "预期净收益",
                         f"{s.expected_return:+.0f} 元",
                     )
+                    st.metric("最高可中", f"{max_return:.0f} 元")
                     st.metric("最大亏损", f"{s.max_loss:.0f} 元")
 
                     with st.expander("📝 策略说明", expanded=False):
                         st.caption(s.reasoning or "基于规则模型生成")
 
                     with st.expander("📋 下注明细", expanded=False):
-                        for b in s.bets:
-                            st.markdown(
-                                f"**{b.match_id} {b.home_team}vs{b.away_team}** "
-                                f"· {b.play_type}"
-                            )
-                            st.caption(
-                                f"投 {b.pick} | 赔率 {b.odds:.2f} | "
-                                f"金额 {b.stake:.0f}元 | "
-                                f"信心 {b.confidence:.0%}"
-                            )
-                            st.divider()
+                        # ── Parlay bets first (highlighted) ──
+                        if parlays:
+                            st.markdown("##### 🎯 串关投注")
+                            for b in parlays:
+                                # Show first 2 teams in summary
+                                teams = []
+                                for leg in b.parlay_legs[:3]:
+                                    teams.append(
+                                        f"{leg['home']}vs{leg['away']}"
+                                    )
+                                team_str = " + ".join(teams)
+                                if len(b.parlay_legs) > 3:
+                                    team_str += f" 等{len(b.parlay_legs)}场"
+
+                                st.markdown(
+                                    f"**{b.play_type}** {team_str}"
+                                )
+                                st.caption(
+                                    f"投 {b.pick} | "
+                                    f"组合赔率 **{b.odds:.2f}** | "
+                                    f"金额 {b.stake:.0f}元 | "
+                                    f"可中 {b.stake * b.odds:.0f}元"
+                                )
+                                # Expandable legs
+                                with st.expander(f"查看{b.play_type}明细",
+                                                 expanded=False):
+                                    for j, leg in enumerate(b.parlay_legs, 1):
+                                        st.caption(
+                                            f"  腿{j}: {leg['match_id']} "
+                                            f"{leg['home']}vs{leg['away']} "
+                                            f"→ {leg['pick']} "
+                                            f"(@{leg['odds']:.2f})"
+                                        )
+                                st.divider()
+
+                        # ── Single bets ──
+                        if singles:
+                            if parlays:
+                                st.markdown("##### 📌 单关投注")
+                            for b in singles:
+                                st.markdown(
+                                    f"**{b.match_id} {b.home_team}vs{b.away_team}** "
+                                    f"· {b.play_type}"
+                                )
+                                st.caption(
+                                    f"投 {b.pick} | 赔率 {b.odds:.2f} | "
+                                    f"金额 {b.stake:.0f}元 | "
+                                    f"信心 {b.confidence:.0%}"
+                                )
+                                st.divider()
                 else:
                     st.caption("本档暂无符合条件的投注")
 

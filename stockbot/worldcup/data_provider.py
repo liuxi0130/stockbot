@@ -70,16 +70,22 @@ class Match:
 
 @dataclass
 class Bet:
-    """A single bet recommendation."""
+    """A single bet recommendation (single or parlay).
+
+    For single bets: use match_id/home_team/away_team/pick as usual.
+    For parlay bets: play_type = "2串1"/"3串1" etc, odds = combined odds,
+    and parlay_legs lists each leg's match info.
+    """
     match_id: str
     home_team: str
     away_team: str
-    play_type: str             # "胜平负" / "让球" / "总进球" / "半全场" / "比分"
-    pick: str                  # "胜" / "2-3球"
+    play_type: str             # "胜平负" / "让球" / "2串1" / "3串1" ...
+    pick: str                  # "胜" / "法国胜+阿根廷平" (combined for parlay)
     odds: float
     stake: float               # 2元倍数
     expected_value: float
     confidence: float          # 0-1
+    parlay_legs: list[dict] = field(default_factory=list)
 
 
 @dataclass

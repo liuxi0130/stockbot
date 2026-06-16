@@ -1,5 +1,7 @@
-"""Strategy engine — multi-factor scoring, Kelly criterion, risk-tier allocation."""
+"""Strategy engine — multi-factor scoring, Kelly criterion, risk-tier allocation.
+Includes parlay (串关) bets for maximum return."""
 import math
+import itertools
 from stockbot.worldcup.data_provider import Match, Bet, Strategy
 
 # Approximate FIFA rankings for 2026 World Cup teams (June 2026 estimates)
@@ -22,13 +24,27 @@ _MEDIUM_TYPES = ["胜平负", "让球"]
 _ALL_TYPES = ["胜平负", "让球", "总进球", "半全场", "比分"]
 
 # Risk tier configs
+# parlay_alloc: {parlay_size: budget_ratio} — fraction of tier budget for each parlay size
+# parlay_kelly_discount: extra discount on kelly for parlays (less certain due to independence assumption)
 _TIER_CONFIG = {
     "保守": {"kelly_factor": 0.25, "max_budget_ratio": 0.50, "max_single": 0.10,
-              "min_prob": 0.45, "play_types": _SPF_TYPES},
+              "min_prob": 0.45, "play_types": _SPF_TYPES,
+              "parlay_sizes": [2],  # only 2串1
+              "parlay_budget_ratio": 0.30,  # 30% of budget to parlays
+              "parlay_kelly_discount": 0.5,
+              "max_parlays": 5},
     "均衡": {"kelly_factor": 0.50, "max_budget_ratio": 0.75, "max_single": 0.15,
-              "min_prob": 0.30, "play_types": _MEDIUM_TYPES},
+              "min_prob": 0.30, "play_types": _MEDIUM_TYPES,
+              "parlay_sizes": [2, 3, 4],  # 2串1, 3串1, 4串1
+              "parlay_budget_ratio": 0.60,  # 60% to parlays
+              "parlay_kelly_discount": 0.65,
+              "max_parlays": 8},
     "进取": {"kelly_factor": 1.00, "max_budget_ratio": 0.95, "max_single": 0.20,
-              "min_prob": 0.15, "play_types": _ALL_TYPES},
+              "min_prob": 0.15, "play_types": _ALL_TYPES,
+              "parlay_sizes": [2, 3, 4, 5, 6],  # full range
+              "parlay_budget_ratio": 0.80,  # 80% to parlays
+              "parlay_kelly_discount": 0.80,
+              "max_parlays": 12},
 }
 
 
@@ -38,7 +54,11 @@ class StrategyEngine:
     # ── Public API ──
 
     def generate(self, matches: list[Match], amount: float) -> list[Strategy]:
-        """Produce 3 risk-tier strategies from today's matches and budget."""
+        """Produce 3 risk-tier strategies from today's matches and budget.
+
+        Each tier now includes both single bets and parlay (串关) bets,
+        with budget allocated to maximize expected return.
+        """
         if not matches or amount <= 0:
             return [
                 Strategy(risk_level=tier, total_stake=0,
@@ -49,15 +69,49 @@ class StrategyEngine:
         strategies = []
         for tier in ["保守", "均衡", "进取"]:
             cfg = _TIER_CONFIG[tier]
-            bets = self._generate_bets(matches, amount, cfg)
-            total_stake = sum(b.stake for b in bets)
-            expected_return = sum(b.stake * b.odds * b.confidence for b in bets)
+
+            # Step 1: Generate single bets
+            single_bets = self._generate_bets(matches, amount, cfg)
+
+            # Step 2: Generate parlay bets from best picks
+            parlay_ratio = cfg.get("parlay_budget_ratio", 0)
+            parlay_bets = self._generate_parlay_bets(
+                matches, amount, cfg, single_bets)
+
+            # Step 3: Scale stakes by budget split ratio
+            all_bets = single_bets + parlay_bets
+            if parlay_ratio > 0 and single_bets and parlay_bets:
+                single_total = sum(b.stake for b in single_bets)
+                parlay_total = sum(b.stake for b in parlay_bets)
+
+                if single_total > 0:
+                    single_scale = (
+                        amount * (1 - parlay_ratio) / single_total)
+                    for b in single_bets:
+                        new_stake = self._round_to_2(
+                            b.stake * single_scale)
+                        b.stake = new_stake
+
+                if parlay_total > 0:
+                    parlay_scale = (
+                        amount * parlay_ratio / parlay_total)
+                    for b in parlay_bets:
+                        new_stake = self._round_to_2(
+                            b.stake * parlay_scale)
+                        b.stake = new_stake
+
+                # Filter bets below min stake
+                all_bets = [b for b in all_bets if b.stake >= 2]
+
+            total_stake = sum(b.stake for b in all_bets)
+            expected_return = sum(
+                b.stake * b.odds * b.confidence for b in all_bets)
             strategies.append(Strategy(
                 risk_level=tier,
                 total_stake=total_stake,
                 expected_return=round(expected_return - total_stake, 2),
                 max_loss=total_stake,
-                bets=bets,
+                bets=all_bets,
             ))
         return strategies
 
@@ -180,6 +234,99 @@ class StrategyEngine:
         return result
 
     # ── Internal scoring methods ──
+
+    def _generate_parlay_bets(self, matches: list[Match], amount: float,
+                               cfg: dict, single_bets: list[Bet]) -> list[Bet]:
+        """Generate parlay (串关) bets from best single picks.
+
+        For each parlay size in cfg["parlay_sizes"], combines the best
+        EV picks across matches. Combined odds = product of leg odds;
+        combined probability = product of leg probabilities.
+        """
+        parlay_sizes = cfg.get("parlay_sizes", [])
+        if not parlay_sizes:
+            return []
+
+        # Pick the best single bet per match (highest EV)
+        best_by_match: dict[str, Bet] = {}
+        for b in single_bets:
+            key = b.match_id
+            if (key not in best_by_match
+                    or b.expected_value > best_by_match[key].expected_value):
+                best_by_match[key] = b
+
+        picks = list(best_by_match.values())
+        if len(picks) < 2:
+            return []
+
+        kelly_discount = cfg.get("parlay_kelly_discount", 0.5)
+        max_parlays = cfg.get("max_parlays", 8)
+        max_stake = self._round_to_2(amount * cfg["max_single"] * 0.5)
+        budget = amount * cfg["max_budget_ratio"]
+
+        all_parlays: list[tuple[float, Bet]] = []
+
+        for size in parlay_sizes:
+            if size > len(picks):
+                continue
+
+            size_parlays: list[tuple[float, Bet]] = []
+            for combo in itertools.combinations(picks, size):
+                # Check no duplicate matches in combo
+                match_ids = {b.match_id for b in combo}
+                if len(match_ids) < size:
+                    continue
+
+                # Combined odds and probability
+                combined_odds = 1.0
+                combined_prob = 1.0
+                for b in combo:
+                    combined_odds *= b.odds
+                    combined_prob *= b.confidence
+
+                ev = combined_prob * combined_odds - 1
+                kelly = (self._kelly_fraction(combined_odds, combined_prob)
+                         * kelly_discount * cfg["kelly_factor"])
+
+                if kelly > 0:
+                    pick_desc = "+".join(
+                        f"{b.home_team}{b.pick}" for b in combo)
+                    leg_info = [
+                        {"match_id": b.match_id, "home": b.home_team,
+                         "away": b.away_team, "pick": b.pick,
+                         "odds": b.odds, "play_type": b.play_type}
+                        for b in combo
+                    ]
+                    size_parlays.append((kelly, Bet(
+                        match_id=f"{size}串1",
+                        home_team="",
+                        away_team="",
+                        play_type=f"{size}串1",
+                        pick=pick_desc,
+                        odds=round(combined_odds, 2),
+                        stake=0.0,
+                        expected_value=round(ev, 4),
+                        confidence=round(combined_prob, 4),
+                        parlay_legs=leg_info,
+                    )))
+
+            # Sort by EV descending, take top N per size
+            size_parlays.sort(key=lambda x: x[1].expected_value, reverse=True)
+            per_size = max(1, max_parlays // len(parlay_sizes))
+            all_parlays.extend(size_parlays[:per_size])
+
+        # Allocate stakes proportionally by Kelly fraction
+        total_kelly = sum(k for k, _ in all_parlays)
+        if total_kelly <= 0 or not all_parlays:
+            return []
+
+        result = []
+        for k, bet in all_parlays:
+            raw_stake = (k / total_kelly) * budget
+            bet.stake = min(self._round_to_2(raw_stake), max_stake)
+            if bet.stake >= 2:
+                result.append(bet)
+        return result
 
     def _match_probability(self, match: Match, pick: str, odds: float,
                            handicap: int = 0) -> float:
