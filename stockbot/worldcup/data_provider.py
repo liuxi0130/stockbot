@@ -1,12 +1,15 @@
 """World Cup match data provider — fetches today's matches and odds from
-Chinese sports lottery APIs (sporttery.cn → 500.com fallback).
+Chinese sports lottery official API (sporttery.cn).
 
-When both external APIs are unreachable (e.g. cloud IP blocked by anti-scraping),
-falls back to local sample data (data/worldcup_sample.json) for demo purposes.
+Uses the public JSON API behind 中国体育彩票竞彩网:
+  getMatchListV1.qry  — match list + HAD/HHAD odds (primary)
+  getMatchCalculatorV1.qry — per-pool detailed odds (enhancement)
+
+Falls back to local sample data (data/worldcup_sample.json) when the API
+is unreachable.
 """
 import logging
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -16,20 +19,43 @@ import httpx
 LOGGER = logging.getLogger(__name__)
 
 # ── API endpoints ──
-_SPORTTERY_URL = "https://webapi.sporttery.cn/gateway/lottery/getFootBallMatchList.qry"
-_FIVEHUNDRED_URL = "https://odds.500.com/fenxi/shuju-{date}.shtml"
+_SPORTTERY_MATCH_LIST_URL = (
+    "https://webapi.sporttery.cn/gateway/uniform/football/"
+    "getMatchListV1.qry?clientCode=3001"
+)
+_SPORTTERY_CALC_URL = (
+    "https://webapi.sporttery.cn/gateway/jc/football/"
+    "getMatchCalculatorV1.qry"
+)
 # ── Local fallback ──
-_SAMPLE_DATA_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "worldcup_sample.json"
+_SAMPLE_DATA_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "data" / "worldcup_sample.json"
+)
+
+# ── Browser-like headers to avoid WAF blocking ──
+_API_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://www.sporttery.cn/",
+    "Origin": "https://www.sporttery.cn",
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Cache-Control": "no-cache",
+}
 
 
 @dataclass
 class Match:
     """A single World Cup match with all available bet types and odds."""
-    match_id: str              # "周一001"
+    match_id: str              # "周二017"
     home_team: str             # 主队
     away_team: str             # 客队
-    match_time: str            # "09:00"
-    league: str                # "世界杯A组"
+    match_time: str            # "03:00"
+    league: str                # "世界杯"
     spf_odds: tuple[float, float, float]       # 胜平负 (胜, 平, 负)
     rqspf_odds: tuple[float, float, float]     # 让球胜平负
     handicap: int = 0                          # 让球数
@@ -73,9 +99,10 @@ class MatchFetchError(Exception):
 
 
 class WorldCupDataProvider:
-    """Fetch today's World Cup matches and odds from Chinese lottery APIs.
+    """Fetch today's World Cup matches and odds from sporttery.cn.
 
-    Priority: sporttery.cn (JSON API) → 500.com (HTML parse).
+    Uses the official China Sports Lottery public JSON API.
+    Falls back to local sample data when unreachable.
     """
 
     def __init__(self, timeout: float = 10.0):
@@ -89,10 +116,10 @@ class WorldCupDataProvider:
         if target_date is None:
             target_date = date.today().strftime("%Y-%m-%d")
 
-        # ── Try sporttery.cn first ──
+        # ── Primary: sporttery.cn match list API ──
         try:
-            data = await self._fetch_sporttery_games()
-            matches = self._parse_sporttery_data(data)
+            data = await self._fetch_json(_SPORTTERY_MATCH_LIST_URL)
+            matches = self._parse_match_list(data)
             # Filter to only World Cup matches
             wc_matches = [m for m in matches if "世界杯" in m.league]
             if wc_matches:
@@ -100,19 +127,9 @@ class WorldCupDataProvider:
                             len(wc_matches))
                 return wc_matches
         except Exception as e:
-            LOGGER.warning("sporttery.cn fetch failed: %s", e)
+            LOGGER.warning("sporttery.cn match list fetch failed: %s", e)
 
-        # ── Fallback: 500.com ──
-        try:
-            html = await self._fetch_500com(target_date)
-            matches = self._parse_500_html(html)
-            if matches:
-                LOGGER.info("Got %d matches from 500.com fallback", len(matches))
-                return matches
-        except Exception as e:
-            LOGGER.warning("500.com fetch failed: %s", e)
-
-        # ── Last resort: local sample data (for demo / anti-scraping fallback) ──
+        # ── Fallback: local sample data ──
         try:
             matches = self._load_sample_data()
             if matches:
@@ -124,143 +141,92 @@ class WorldCupDataProvider:
         LOGGER.warning("No match data available from any source")
         return []
 
-    async def _fetch_sporttery_games(self) -> dict:
-        """Fetch match list from sporttery.cn JSON API."""
-        params = {
-            "matchPage": 1,
-            "matchPageSize": 50,
-        }
-        return await self._fetch_json(_SPORTTERY_URL, params=params)
-
-    async def _fetch_500com(self, target_date: str) -> str:
-        """Fetch match page from 500.com."""
-        date_str = target_date.replace("-", "")
-        url = _FIVEHUNDRED_URL.format(date=date_str)
-        return await self._fetch_html(url)
+    # ── HTTP helpers ──
 
     async def _fetch_json(self, url: str, params: dict | None = None) -> dict:
         """HTTP GET and return JSON dict."""
         async with httpx.AsyncClient(timeout=self._timeout) as client:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                              "AppleWebKit/537.36 (KHTML, like Gecko) "
-                              "Chrome/125.0.0.0 Safari/537.36",
-            }
-            resp = await client.get(url, params=params, headers=headers)
+            resp = await client.get(url, params=params, headers=_API_HEADERS)
             if resp.status_code != 200:
                 raise MatchFetchError(
                     f"HTTP {resp.status_code} from {url}")
             return resp.json()
 
-    async def _fetch_html(self, url: str) -> str:
-        """HTTP GET and return HTML text."""
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                              "AppleWebKit/537.36",
-            }
-            resp = await client.get(url, headers=headers)
-            if resp.status_code != 200:
-                raise MatchFetchError(
-                    f"HTTP {resp.status_code} from {url}")
-            return resp.text
+    # ── Parsing: getMatchListV1.qry ──
 
-    # ── Parsing ──
+    def _parse_match_list(self, data: dict) -> list[Match]:
+        """Parse getMatchListV1.qry JSON into Match objects.
 
-    def _parse_sporttery_data(self, data: dict) -> list:
-        """Parse sporttery.cn JSON response into Match objects."""
+        Response structure:
+          value.matchInfoList[].subMatchList[]
+            matchNumStr, homeTeamAllName, awayTeamAllName,
+            leagueAllName, matchDate, matchTime, matchStatus, remark
+            oddsList[]: {poolCode, h, d, a, goalLine}
+        """
         matches = []
-        match_list = data.get("data", {}).get("matchList", [])
-        if not match_list:
-            # Some versions nest differently
-            match_list = data.get("value", {}).get("matchList", [])
+        match_info_list = data.get("value", {}).get("matchInfoList", [])
+        if not match_info_list:
+            return matches
 
-        for item in match_list:
-            try:
-                odds = item.get("odds", {}) or {}
-                spf = odds.get("spf", {}) or {}
-                rqspf = odds.get("rqspf", {}) or {}
+        for info in match_info_list:
+            for item in info.get("subMatchList", []):
+                try:
+                    # Skip matches not yet selling
+                    if item.get("matchStatus") != "Selling":
+                        continue
 
-                spf_odds = (
-                    float(spf.get("w", 0)),
-                    float(spf.get("d", 0)),
-                    float(spf.get("l", 0)),
-                )
-                rqspf_odds = (
-                    float(rqspf.get("w", 0)),
-                    float(rqspf.get("d", 0)),
-                    float(rqspf.get("l", 0)),
-                )
-                handicap = int(rqspf.get("handicap", 0))
+                    # Extract HAD / HHAD odds from oddsList
+                    odds_map = {}
+                    for o in item.get("oddsList", []):
+                        pool = o.get("poolCode", "")
+                        if pool in ("HAD", "HHAD"):
+                            odds_map[pool] = o
 
-                # Skip if no valid odds
-                if spf_odds == (0, 0, 0):
+                    had = odds_map.get("HAD", {})
+                    hhad = odds_map.get("HHAD", {})
+
+                    spf_odds = (
+                        float(had.get("h", 0) or 0),
+                        float(had.get("d", 0) or 0),
+                        float(had.get("a", 0) or 0),
+                    )
+                    rqspf_odds = (
+                        float(hhad.get("h", 0) or 0),
+                        float(hhad.get("d", 0) or 0),
+                        float(hhad.get("a", 0) or 0),
+                    )
+
+                    # Skip if no valid SPF odds
+                    if spf_odds == (0, 0, 0):
+                        continue
+
+                    # goalLine: e.g. "-1" or "+2" → int
+                    goal_line_str = hhad.get("goalLine", "0") or "0"
+                    try:
+                        handicap = int(float(goal_line_str))
+                    except (ValueError, TypeError):
+                        handicap = 0
+
+                    match_time = item.get("matchTime", "") or ""
+                    # matchTime may be "03:00:00" → strip seconds
+                    if match_time.count(":") == 2:
+                        match_time = match_time[:5]
+
+                    m = Match(
+                        match_id=item.get("matchNumStr", ""),
+                        home_team=item.get("homeTeamAllName", ""),
+                        away_team=item.get("awayTeamAllName", ""),
+                        match_time=match_time,
+                        league=item.get("leagueAllName", ""),
+                        spf_odds=spf_odds,
+                        rqspf_odds=rqspf_odds,
+                        handicap=handicap,
+                    )
+                    matches.append(m)
+                except Exception as e:
+                    LOGGER.debug("Failed to parse match item: %s", e)
                     continue
 
-                match_time = item.get("matchTime", "")
-                if " " in match_time:
-                    match_time = match_time.split(" ")[-1][:5]
-
-                m = Match(
-                    match_id=item.get("matchId", ""),
-                    home_team=item.get("homeTeam", ""),
-                    away_team=item.get("awayTeam", ""),
-                    match_time=match_time,
-                    league=item.get("leagueName", ""),
-                    spf_odds=spf_odds,
-                    rqspf_odds=rqspf_odds,
-                    handicap=handicap,
-                )
-                matches.append(m)
-            except Exception as e:
-                LOGGER.debug("Failed to parse match item: %s", e)
-                continue
-
-        return matches
-
-    def _parse_500_html(self, html: str) -> list:
-        """Parse 500.com HTML into Match objects (best-effort regex)."""
-        if not html:
-            return []
-        matches = []
-        # Extract match rows from the data table
-        rows = re.findall(
-            r'<tr[^>]*data-match[^>]*>.*?</tr>', html, re.DOTALL
-        )
-        for row in rows:
-            try:
-                # Extract match ID
-                mid_match = re.search(r'(\w+\d+)', row)
-                if not mid_match:
-                    continue
-                match_id = mid_match.group(1)
-
-                # Extract teams
-                teams = re.findall(r'<a[^>]*>([^<]+)</a>', row)
-                if len(teams) >= 2:
-                    home, away = teams[0], teams[1]
-                else:
-                    continue
-
-                # Extract SPF odds (first 3 odds after teams)
-                odds = re.findall(r'>(\d+\.\d+)<', row)
-                spf_odds = tuple(float(o) for o in odds[:3]) if len(odds) >= 3 else (0, 0, 0)
-
-                if spf_odds == (0, 0, 0):
-                    continue
-
-                m = Match(
-                    match_id=match_id,
-                    home_team=home.strip(),
-                    away_team=away.strip(),
-                    match_time="",
-                    league="",
-                    spf_odds=spf_odds,
-                    rqspf_odds=(0, 0, 0),
-                )
-                matches.append(m)
-            except Exception:
-                continue
         return matches
 
     # ── Local fallback ──
