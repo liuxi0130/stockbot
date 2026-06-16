@@ -1,10 +1,15 @@
 """World Cup match data provider — fetches today's matches and odds from
-Chinese sports lottery APIs (sporttery.cn → 500.com fallback)."""
+Chinese sports lottery APIs (sporttery.cn → 500.com fallback).
+
+When both external APIs are unreachable (e.g. cloud IP blocked by anti-scraping),
+falls back to local sample data (data/worldcup_sample.json) for demo purposes.
+"""
 import logging
 import json
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 import httpx
 
@@ -13,6 +18,8 @@ LOGGER = logging.getLogger(__name__)
 # ── API endpoints ──
 _SPORTTERY_URL = "https://webapi.sporttery.cn/gateway/lottery/getFootBallMatchList.qry"
 _FIVEHUNDRED_URL = "https://odds.500.com/fenxi/shuju-{date}.shtml"
+# ── Local fallback ──
+_SAMPLE_DATA_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "worldcup_sample.json"
 
 
 @dataclass
@@ -104,6 +111,15 @@ class WorldCupDataProvider:
                 return matches
         except Exception as e:
             LOGGER.warning("500.com fetch failed: %s", e)
+
+        # ── Last resort: local sample data (for demo / anti-scraping fallback) ──
+        try:
+            matches = self._load_sample_data()
+            if matches:
+                LOGGER.info("Using %d matches from local sample data", len(matches))
+                return matches
+        except Exception as e:
+            LOGGER.warning("Local sample data failed: %s", e)
 
         LOGGER.warning("No match data available from any source")
         return []
@@ -245,4 +261,38 @@ class WorldCupDataProvider:
                 matches.append(m)
             except Exception:
                 continue
+        return matches
+
+    # ── Local fallback ──
+
+    def _load_sample_data(self) -> list[Match]:
+        """Load matches from local sample JSON when external APIs are unreachable."""
+        if not _SAMPLE_DATA_PATH.exists():
+            LOGGER.debug("Sample data file not found: %s", _SAMPLE_DATA_PATH)
+            return []
+
+        with open(_SAMPLE_DATA_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+
+        matches = []
+        for item in raw:
+            try:
+                m = Match(
+                    match_id=item.get("match_id", ""),
+                    home_team=item.get("home_team", ""),
+                    away_team=item.get("away_team", ""),
+                    match_time=item.get("match_time", ""),
+                    league=item.get("league", ""),
+                    spf_odds=tuple(item.get("spf_odds", [0, 0, 0])),
+                    rqspf_odds=tuple(item.get("rqspf_odds", [0, 0, 0])),
+                    handicap=item.get("handicap", 0),
+                    total_goals_odds=item.get("total_goals_odds", {}),
+                    bq_odds=tuple(item.get("bq_odds", [])),
+                    score_odds=item.get("score_odds", {}),
+                )
+                matches.append(m)
+            except Exception as e:
+                LOGGER.debug("Failed to parse sample match: %s", e)
+                continue
+
         return matches

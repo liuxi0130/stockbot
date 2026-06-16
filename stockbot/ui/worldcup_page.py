@@ -78,16 +78,17 @@ def _render_match_section():
     """Render today's match list and AI analyses."""
     st.subheader("📋 今日比赛")
 
-    # Fetch matches if not loaded
+    # Fetch matches if not loaded (short timeout — external APIs may be blocked)
     if not st.session_state.wc_matches:
         with st.spinner("正在获取今日比赛数据..."):
-            provider = WorldCupDataProvider()
+            provider = WorldCupDataProvider(timeout=5.0)
             try:
                 st.session_state.wc_matches = asyncio.run(
                     provider.get_today_matches()
                 )
             except Exception as e:
-                st.error(f"数据获取失败: {e}")
+                st.warning(f"数据获取失败（可能被反爬拦截）: {e}")
+                LOGGER.warning("Match data fetch failed: %s", e)
                 st.session_state.wc_matches = []
 
     matches = st.session_state.wc_matches
@@ -146,32 +147,42 @@ def _render_strategy_section(amount: float):
 
     # Generate strategies if triggered
     if st.session_state.wc_loading and st.session_state.wc_matches:
-        with st.spinner("正在计算最优策略..."):
-            # Step 1: Rule engine
-            engine = StrategyEngine()
-            strategies = engine.generate(
-                st.session_state.wc_matches, amount
-            )
+        try:
+            with st.spinner("正在计算最优策略..."):
+                # Step 1: Rule engine
+                engine = StrategyEngine()
+                strategies = engine.generate(
+                    st.session_state.wc_matches, amount
+                )
 
-            # Step 2: LLM interpretation
-            llm = _get_llm()
-            if LLMAdvisor is not None and llm is not None:
-                advisor = LLMAdvisor(llm=llm)
-                try:
-                    strategies = asyncio.run(
-                        advisor.interpret_strategies(strategies, amount)
-                    )
-                except Exception as e:
-                    st.warning(f"AI 策略解读暂不可用: {e}")
+                # Step 2: LLM interpretation (with timeout protection)
+                llm = _get_llm()
+                if LLMAdvisor is not None and llm is not None:
+                    advisor = LLMAdvisor(llm=llm)
+                    try:
+                        strategies = asyncio.run(
+                            advisor.interpret_strategies(strategies, amount)
+                        )
+                    except Exception as e:
+                        st.warning(f"AI 策略解读暂不可用（将使用规则模型）: {e}")
+                        LOGGER.warning("LLM strategy interpretation failed: %s", e)
 
-            st.session_state.wc_strategies = strategies
+                st.session_state.wc_strategies = strategies
+        except Exception as e:
+            st.error(f"策略生成失败: {e}")
+            LOGGER.error("Strategy generation crashed: %s", e)
+            st.session_state.wc_strategies = []
+        finally:
             st.session_state.wc_loading = False
+    elif st.session_state.wc_loading and not st.session_state.wc_matches:
+        # No match data — reset loading state so UI doesn't hang forever
+        st.session_state.wc_loading = False
 
     strategies = st.session_state.wc_strategies
 
     if not strategies:
-        if st.session_state.wc_loading:
-            st.info("正在生成策略...")
+        if not st.session_state.wc_matches:
+            st.info("暂无比赛数据，无法生成策略。请检查赛程或稍后再试。")
         else:
             st.info(
                 "输入金额并点击 **「🎯 生成策略」** 即可获得推荐。"

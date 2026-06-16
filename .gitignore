@@ -1,7 +1,8 @@
 __pycache__/
 *.pyc
 *.pyo
-/data/
+/data/*
+!/data/worldcup_sample.json
 .pytest_cache/
 .streamlit/
 *.egg-info/

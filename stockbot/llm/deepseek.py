@@ -1,5 +1,6 @@
 import json
 import os
+import httpx
 from openai import AsyncOpenAI
 from stockbot.llm.base import LLMProvider, LLMResponse, ToolCall
 
@@ -13,6 +14,7 @@ class DeepSeekProvider(LLMProvider):
         self.client = AsyncOpenAI(
             api_key=api_key or os.environ.get("DEEPSEEK_API_KEY", ""),
             base_url="https://api.deepseek.com",
+            timeout=httpx.Timeout(30.0, connect=10.0),
         )
 
     async def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:

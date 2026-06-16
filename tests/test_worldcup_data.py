@@ -125,8 +125,9 @@ class TestWorldCupDataProvider:
         provider = WorldCupDataProvider()
         with patch.object(provider, "_fetch_json",
                           side_effect=MatchFetchError("网络错误")):
-            matches = await provider.get_today_matches()
-            assert matches == []
+            with patch.object(provider, "_load_sample_data", return_value=[]):
+                matches = await provider.get_today_matches()
+                assert matches == []
 
     @pytest.mark.asyncio
     async def test_get_today_matches_fallback_to_500(self):
@@ -139,6 +140,21 @@ class TestWorldCupDataProvider:
                 matches = await provider.get_today_matches()
                 # Should not crash, empty result for now
                 assert isinstance(matches, list)
+
+    @pytest.mark.asyncio
+    async def test_get_today_matches_fallback_to_local_sample(self):
+        """When all external APIs fail, local sample data should be used."""
+        provider = WorldCupDataProvider()
+        # Simulate both external APIs failing
+        with patch.object(provider, "_fetch_json",
+                          side_effect=MatchFetchError("sporttery blocked")):
+            with patch.object(provider, "_fetch_html",
+                              side_effect=MatchFetchError("500 blocked")):
+                matches = await provider.get_today_matches()
+                # Should fall back to sample data (4 matches)
+                assert len(matches) >= 1
+                assert all(isinstance(m.spf_odds, tuple) for m in matches)
+                assert all(len(m.spf_odds) == 3 for m in matches)
 
 
 class TestIntegration:
