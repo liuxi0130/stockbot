@@ -139,3 +139,55 @@ class TestWorldCupDataProvider:
                 matches = await provider.get_today_matches()
                 # Should not crash, empty result for now
                 assert isinstance(matches, list)
+
+
+class TestIntegration:
+    """End-to-end pipeline test: data → engine → advisor (no LLM)."""
+
+    def test_full_pipeline_no_llm(self):
+        import asyncio
+        from stockbot.worldcup.strategy_engine import StrategyEngine
+        from stockbot.worldcup.llm_advisor import LLMAdvisor
+
+        # Create mock matches directly (bypass APIs)
+        matches = [
+            Match(
+                match_id="周一001", home_team="巴西", away_team="新西兰",
+                match_time="09:00", league="世界杯A组",
+                spf_odds=(1.3, 5.0, 9.0),
+                rqspf_odds=(1.1, 4.5, 7.0), handicap=-2,
+                total_goals_odds={"2": 3.2, "3": 3.8},
+                bq_odds=(2.0, 12.0, 25.0, 3.5, 4.5, 6.5, 30.0, 15.0, 8.0),
+            ),
+            Match(
+                match_id="周一002", home_team="英格兰", away_team="德国",
+                match_time="12:00", league="世界杯B组",
+                spf_odds=(2.1, 3.0, 3.8),
+                rqspf_odds=(1.6, 3.5, 4.2), handicap=-1,
+            ),
+        ]
+
+        # Step 1: Strategy engine
+        engine = StrategyEngine()
+        strategies = engine.generate(matches, amount=200)
+
+        assert len(strategies) == 3
+        conservative = strategies[0]
+        assert conservative.risk_level == "保守"
+        assert len(conservative.bets) > 0
+        assert all(b.play_type == "胜平负" for b in conservative.bets)
+
+        aggressive = strategies[2]
+        assert aggressive.risk_level == "进取"
+        assert conservative.total_stake <= 200
+        assert aggressive.total_stake <= 200
+        assert conservative.total_stake <= aggressive.total_stake
+
+        # Step 2: LLM advisor (no LLM — degrade path)
+        advisor = LLMAdvisor(llm=None)
+        result = asyncio.run(
+            advisor.interpret_strategies(strategies, amount=200)
+        )
+        assert len(result) == 3
+        for s in result:
+            assert "规则" in s.reasoning
