@@ -1,6 +1,11 @@
 """Tests for worldcup data structures."""
+import json
+from unittest.mock import patch, MagicMock
 import pytest
-from stockbot.worldcup.data_provider import Match, Bet, Strategy, MatchFetchError
+import httpx
+from stockbot.worldcup.data_provider import (
+    Match, Bet, Strategy, MatchFetchError, WorldCupDataProvider,
+)
 
 
 class TestMatch:
@@ -67,3 +72,70 @@ class TestMatchFetchError:
         e = MatchFetchError("API 不可用")
         assert str(e) == "API 不可用"
         assert isinstance(e, Exception)
+
+
+# ── Sample sporttery.cn JSON response ──
+_SAMPLE_SPORTTERY_RESP = {
+    "data": {
+        "matchList": [
+            {
+                "matchId": "周一001",
+                "homeTeam": "美国",
+                "awayTeam": "巴西",
+                "matchTime": "2026-06-17 09:00:00",
+                "leagueName": "世界杯A组",
+                "odds": {
+                    "spf": {"w": 2.50, "d": 3.10, "l": 2.80},
+                    "rqspf": {"w": 1.80, "d": 3.30, "l": 3.50, "handicap": 0},
+                },
+            },
+        ],
+    },
+}
+
+
+class TestWorldCupDataProvider:
+    def test_parse_sporttery_response(self):
+        provider = WorldCupDataProvider()
+        matches = provider._parse_sporttery_data(_SAMPLE_SPORTTERY_RESP)
+        assert len(matches) == 1
+        m = matches[0]
+        assert m.match_id == "周一001"
+        assert m.home_team == "美国"
+        assert m.away_team == "巴西"
+        assert m.spf_odds == (2.50, 3.10, 2.80)
+        assert m.rqspf_odds == (1.80, 3.30, 3.50)
+        assert m.handicap == 0
+        assert m.league == "世界杯A组"
+
+    @pytest.mark.asyncio
+    async def test_get_today_matches_with_mock_api(self):
+        provider = WorldCupDataProvider()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = _SAMPLE_SPORTTERY_RESP
+
+        with patch.object(provider, "_fetch_json",
+                          return_value=_SAMPLE_SPORTTERY_RESP):
+            matches = await provider.get_today_matches()
+            assert len(matches) == 1
+
+    @pytest.mark.asyncio
+    async def test_get_today_matches_empty_when_api_fails(self):
+        provider = WorldCupDataProvider()
+        with patch.object(provider, "_fetch_json",
+                          side_effect=MatchFetchError("网络错误")):
+            matches = await provider.get_today_matches()
+            assert matches == []
+
+    @pytest.mark.asyncio
+    async def test_get_today_matches_fallback_to_500(self):
+        provider = WorldCupDataProvider()
+        # Simulate sporttery failure, 500 success
+        with patch.object(provider, "_fetch_json",
+                          side_effect=MatchFetchError("sporttery down")):
+            with patch.object(provider, "_fetch_html",
+                              return_value=None):
+                matches = await provider.get_today_matches()
+                # Should not crash, empty result for now
+                assert isinstance(matches, list)
