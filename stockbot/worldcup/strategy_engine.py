@@ -47,6 +47,10 @@ _TIER_CONFIG = {
               "max_parlays": 12},
 }
 
+# Day-of-week order for adjacency check (周一=1 ... 周日=7)
+_DAY_ORDER = {"周一": 1, "周二": 2, "周三": 3, "周四": 4,
+              "周五": 5, "周六": 6, "周日": 7}
+
 
 class StrategyEngine:
     """Generate betting strategies from match data and investment amount."""
@@ -277,10 +281,14 @@ class StrategyEngine:
                 if len(match_ids) < size:
                     continue
 
-                # Only combine matches from the same day
+                # Only combine matches at most 1 day apart
                 # match_id format: "周一001", "周二017" — first 2 chars = day
-                day_prefixes = {m[:2] for m in match_ids}
-                if len(day_prefixes) > 1:
+                day_nums = []
+                for m in match_ids:
+                    prefix = m[:2]
+                    if prefix in _DAY_ORDER:
+                        day_nums.append(_DAY_ORDER[prefix])
+                if day_nums and max(day_nums) - min(day_nums) > 1:
                     continue
 
                 # Combined odds and probability
