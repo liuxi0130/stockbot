@@ -277,6 +277,12 @@ class StrategyEngine:
                 if len(match_ids) < size:
                     continue
 
+                # Only combine matches from the same day
+                # match_id format: "周一001", "周二017" — first 2 chars = day
+                day_prefixes = {m[:2] for m in match_ids}
+                if len(day_prefixes) > 1:
+                    continue
+
                 # Combined odds and probability
                 combined_odds = 1.0
                 combined_prob = 1.0
