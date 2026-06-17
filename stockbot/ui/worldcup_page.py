@@ -59,12 +59,12 @@ def _format_strategy_text(strategy) -> str:
     return "\n\n".join(parts)
 
 
-def _render_copy_button(text: str, key: str = ""):
+def _render_copy_button(text: str, key: str):
     """Render a one-click copy-to-clipboard button using JS Clipboard API.
 
     Args:
         text: The text to copy to clipboard.
-        key: Unique key for this button instance (avoids Streamlit duplicate ID warnings).
+        key: Unique key for this button instance (required by Streamlit).
 
     The button is a self-contained HTML component that:
     - Copies ``text`` to clipboard on click via navigator.clipboard.writeText()
@@ -344,7 +344,7 @@ def _render_strategy_section(amount: float):
                         # ── Parlay bets first (highlighted) ──
                         if parlays:
                             st.markdown("##### 🎯 串关投注")
-                            for b in parlays:
+                            for idx, b in enumerate(parlays):
                                 # Show first 2 teams in summary
                                 teams = []
                                 for leg in b.parlay_legs[:3]:
@@ -367,7 +367,7 @@ def _render_strategy_section(amount: float):
                                 # ── Copy button for this parlay ──
                                 _render_copy_button(
                                     _format_bet_text(b),
-                                    key=f"copy_parlay_{s.risk_level}_{b.play_type}",
+                                    key=f"copy_parlay_{s.risk_level}_{idx}",
                                 )
                                 # Expandable legs
                                 with st.expander(f"查看{b.play_type}明细",
