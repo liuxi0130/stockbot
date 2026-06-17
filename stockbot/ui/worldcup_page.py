@@ -21,6 +21,44 @@ _RISK_DESCRIPTIONS = {
 }
 
 
+def _format_bet_text(bet) -> str:
+    """Format a single Bet as ticket-printing text.
+
+    Single bet:
+        周一001 胜平负 胜 ¥20
+
+    Parlay bet:
+        周一001 胜平负 胜
+        周一002 让球 平
+        ======== 2串1 组合赔率 4.25 ¥30
+    """
+    lines = []
+    if bet.parlay_legs:
+        for leg in bet.parlay_legs:
+            lines.append(
+                f"{leg['match_id']} {leg['play_type']} {leg['pick']}"
+            )
+        lines.append(
+            f"======== {bet.play_type} "
+            f"组合赔率 {bet.odds:.2f} "
+            f"¥{bet.stake:.0f}"
+        )
+    else:
+        lines.append(
+            f"{bet.match_id} {bet.play_type} "
+            f"{bet.pick} ¥{bet.stake:.0f}"
+        )
+    return "\n".join(lines)
+
+
+def _format_strategy_text(strategy) -> str:
+    """Format all bets in a strategy, separated by blank lines."""
+    parts = []
+    for bet in strategy.bets:
+        parts.append(_format_bet_text(bet))
+    return "\n\n".join(parts)
+
+
 def render_worldcup():
     """Render the World Cup betting strategy page."""
     st.title("⚽ 世界杯竞彩策略推荐")
