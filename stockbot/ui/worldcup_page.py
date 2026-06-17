@@ -121,16 +121,16 @@ def _render_copy_button(text: str, key: str = ""):
         ? navigator.clipboard.writeText.bind(navigator.clipboard)
         : fallbackCopy;
     copy(text).then(function() {{
-        btn.innerHTML = '✅ 已复制';
-        setTimeout(function() {{ btn.innerHTML = '📋 复制'; }}, 1500);
+        btn.textContent = '✅ 已复制';
+        setTimeout(function() {{ btn.textContent = '📋 复制'; }}, 1500);
     }}).catch(function() {{
-        btn.innerHTML = '❌ 复制失败';
-        setTimeout(function() {{ btn.innerHTML = '📋 复制'; }}, 1500);
+        btn.textContent = '❌ 复制失败';
+        setTimeout(function() {{ btn.textContent = '📋 复制'; }}, 1500);
     }});
 ">📋 复制</button>
 </body>
 </html>"""
-    st.components.v1.html(html, height=32, scrolling=False)
+    st.components.v1.html(html, height=32, scrolling=False, key=key)
 
 
 def render_worldcup():
