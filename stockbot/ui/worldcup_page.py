@@ -59,6 +59,80 @@ def _format_strategy_text(strategy) -> str:
     return "\n\n".join(parts)
 
 
+def _render_copy_button(text: str, key: str = ""):
+    """Render a one-click copy-to-clipboard button using JS Clipboard API.
+
+    Args:
+        text: The text to copy to clipboard.
+        key: Unique key for this button instance (avoids Streamlit duplicate ID warnings).
+
+    The button is a self-contained HTML component that:
+    - Copies ``text`` to clipboard on click via navigator.clipboard.writeText()
+    - Shows "✅ 已复制" feedback for 1.5 seconds
+    - Falls back to document.execCommand('copy') for older browsers
+    - Shows "❌ 复制失败" on error
+    """
+    # Escape text for safe embedding in JS template literal
+    escaped = (
+        text.replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("$", "\\$")
+    )
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    body {{
+        margin: 0; padding: 0;
+        display: flex; justify-content: flex-start; align-items: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }}
+    .copy-btn {{
+        font-size: 12px; padding: 3px 10px;
+        border: 1px solid #d0d5dd; border-radius: 6px;
+        background: #ffffff; color: #344054;
+        cursor: pointer; white-space: nowrap;
+        transition: all 0.15s ease;
+    }}
+    .copy-btn:hover {{ background: #f5f5f5; border-color: #bbb; }}
+    .copy-btn:active {{ background: #e8e8e8; }}
+</style>
+</head>
+<body>
+<button class="copy-btn" onclick="
+    var text = `{escaped}`;
+    var btn = this;
+    function fallbackCopy(t) {{
+        return new Promise(function(resolve, reject) {{
+            var ta = document.createElement('textarea');
+            ta.value = t;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try {{ document.execCommand('copy'); resolve(); }}
+            catch(e) {{ reject(e); }}
+            document.body.removeChild(ta);
+        }});
+    }}
+    var copy = (navigator.clipboard && navigator.clipboard.writeText)
+        ? navigator.clipboard.writeText.bind(navigator.clipboard)
+        : fallbackCopy;
+    copy(text).then(function() {{
+        btn.innerHTML = '✅ 已复制';
+        setTimeout(function() {{ btn.innerHTML = '📋 复制'; }}, 1500);
+    }}).catch(function() {{
+        btn.innerHTML = '❌ 复制失败';
+        setTimeout(function() {{ btn.innerHTML = '📋 复制'; }}, 1500);
+    }});
+">📋 复制</button>
+</body>
+</html>"""
+    st.components.v1.html(html, height=32, scrolling=False)
+
+
 def render_worldcup():
     """Render the World Cup betting strategy page."""
     st.title("⚽ 世界杯竞彩策略推荐")
