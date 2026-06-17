@@ -329,6 +329,14 @@ def _render_strategy_section(amount: float):
                     st.metric("最高可中", f"{max_return:.0f} 元")
                     st.metric("最大亏损", f"{s.max_loss:.0f} 元")
 
+                    # ── Copy all button ──
+                    strategy_text = _format_strategy_text(s)
+                    if strategy_text:
+                        _render_copy_button(
+                            strategy_text,
+                            key=f"copy_all_{s.risk_level}",
+                        )
+
                     with st.expander("📝 策略说明", expanded=False):
                         st.caption(s.reasoning or "基于规则模型生成")
 
@@ -356,6 +364,11 @@ def _render_strategy_section(amount: float):
                                     f"金额 {b.stake:.0f}元 | "
                                     f"可中 {b.stake * b.odds:.0f}元"
                                 )
+                                # ── Copy button for this parlay ──
+                                _render_copy_button(
+                                    _format_bet_text(b),
+                                    key=f"copy_parlay_{s.risk_level}_{b.play_type}",
+                                )
                                 # Expandable legs
                                 with st.expander(f"查看{b.play_type}明细",
                                                  expanded=False):
@@ -381,6 +394,11 @@ def _render_strategy_section(amount: float):
                                     f"投 {b.pick} | 赔率 {b.odds:.2f} | "
                                     f"金额 {b.stake:.0f}元 | "
                                     f"信心 {b.confidence:.0%}"
+                                )
+                                # ── Copy button for this single bet ──
+                                _render_copy_button(
+                                    _format_bet_text(b),
+                                    key=f"copy_single_{s.risk_level}_{b.match_id}",
                                 )
                                 st.divider()
                 else:
