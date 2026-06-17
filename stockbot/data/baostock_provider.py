@@ -1,4 +1,5 @@
 """Stock data provider backed by Baostock — free, no registration, server-friendly."""
+import urllib.request
 from datetime import datetime, timedelta
 import baostock as bs
 from stockbot.data.base import DataProvider, StockQuote, StockHistory
@@ -16,6 +17,32 @@ class BaostockProvider(DataProvider):
 
     def __init__(self):
         bs.login()
+        self._name_cache: dict[str, str] = {}
+
+    def _lookup_name(self, symbol: str) -> str:
+        """Look up actual stock name via Sina API with in-memory cache.
+
+        Falls back to symbol if Sina is unreachable — strictly better than
+        the previous behaviour of always returning the code as the name.
+        """
+        if symbol in self._name_cache:
+            return self._name_cache[symbol]
+        try:
+            sina_code = f"sh{symbol}" if symbol.startswith(("6", "68", "9")) else f"sz{symbol}"
+            url = f"https://hq.sinajs.cn/list={sina_code}"
+            req = urllib.request.Request(url, headers={"Referer": "https://finance.sina.com.cn"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                raw = resp.read().decode("gbk")
+            # Format: var hq_str_sh600519="贵州茅台,1271.18,..."
+            if '="' in raw:
+                name = raw.split('="')[1].split(",")[0]
+                if name and name != symbol:
+                    self._name_cache[symbol] = name
+                    return name
+        except Exception:
+            pass
+        self._name_cache[symbol] = symbol
+        return symbol
 
     def search(self, query: str) -> list[dict]:
         try:
@@ -41,36 +68,41 @@ class BaostockProvider(DataProvider):
                         bs_code, "date,close",
                         start_date=(datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
                         end_date=datetime.now().strftime("%Y-%m-%d"),
-                        frequency="d", adjustflag="3",
+                        frequency="d", adjustflag="2",
                     )
                     if rs2.get_data().empty:
                         return []
                 except Exception:
                     return []
                 market = "SH" if query.startswith(("6", "68", "9")) else "SZ"
-                return [{"symbol": query, "name": query, "market": market}]
+                name = self._lookup_name(query)
+                return [{"symbol": query, "name": name, "market": market}]
 
             return rows[:10]
         except Exception:
             return []
 
     def get_realtime(self, symbol: str) -> StockQuote:
-        """Get latest available daily data (not true realtime — T+1)."""
+        """Get latest available daily closing data (T+1 — updated 4–6 PM each trading day).
+
+        Uses adjustflag=2 (不复权) to show actual traded price matching brokerage apps.
+        """
         today = datetime.now()
-        start = (today - timedelta(days=400)).strftime("%Y-%m-%d")
+        # Fetch last 10 calendar days — enough to cover weekends/holidays
+        start = (today - timedelta(days=10)).strftime("%Y-%m-%d")
         end = today.strftime("%Y-%m-%d")
         rs = bs.query_history_k_data_plus(
             _to_bs_code(symbol),
             "date,code,close,preclose,pctChg,volume",
             start_date=start, end_date=end,
-            frequency="d", adjustflag="3",
+            frequency="d", adjustflag="2",
         )
         data = rs.get_data()
         if data.empty:
             raise RuntimeError(f"未获取到 {symbol} 的行情数据")
 
         latest = data.iloc[-1]
-        name = self._safe_name(data, symbol)
+        name = self._lookup_name(symbol)
         return StockQuote(
             symbol=symbol,
             name=name,
@@ -92,14 +124,14 @@ class BaostockProvider(DataProvider):
             _to_bs_code(symbol),
             "date,code,open,high,low,close,volume",
             start_date=start, end_date=end,
-            frequency="d", adjustflag="3",
+            frequency="d", adjustflag="1",
         )
 
         data = rs.get_data()
         if data.empty:
             raise RuntimeError(f"{symbol} 历史数据为空")
 
-        name = self._safe_name(data, symbol)
+        name = self._lookup_name(symbol)
         result = [
             {
                 "date": row["date"],
@@ -146,14 +178,6 @@ class BaostockProvider(DataProvider):
 
     def get_news(self, symbol: str, limit: int = 5) -> list[dict]:
         return []
-
-    def _safe_name(self, data, symbol: str) -> str:
-        """Get name from 'code' column, or fall back to search."""
-        try:
-            code_val = data.iloc[-1]["code"]
-            return code_val.split(".")[-1] if "." in str(code_val) else str(code_val)
-        except (KeyError, IndexError):
-            return symbol
 
     @staticmethod
     def _safe_float(value) -> float | None:
