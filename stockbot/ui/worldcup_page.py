@@ -25,18 +25,19 @@ def _format_bet_text(bet) -> str:
     """Format a single Bet as ticket-printing text.
 
     Single bet:
-        周一001 胜平负 胜 ¥20
+        周一001 阿根廷vs法国 胜平负 胜 ¥20
 
     Parlay bet:
-        周一001 胜平负 胜
-        周一002 让球 平
+        周一001 阿根廷vs法国 胜平负 胜
+        周一002 美国vs日本 让球 平
         ======== 2串1 组合赔率 4.25 ¥30
     """
     lines = []
     if bet.parlay_legs:
         for leg in bet.parlay_legs:
             lines.append(
-                f"{leg['match_id']} {leg['play_type']} {leg['pick']}"
+                f"{leg['match_id']} {leg['home']}vs{leg['away']} "
+                f"{leg['play_type']} {leg['pick']}"
             )
         lines.append(
             f"======== {bet.play_type} "
@@ -45,8 +46,8 @@ def _format_bet_text(bet) -> str:
         )
     else:
         lines.append(
-            f"{bet.match_id} {bet.play_type} "
-            f"{bet.pick} ¥{bet.stake:.0f}"
+            f"{bet.match_id} {bet.home_team}vs{bet.away_team} "
+            f"{bet.play_type} {bet.pick} ¥{bet.stake:.0f}"
         )
     return "\n".join(lines)
 

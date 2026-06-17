@@ -23,7 +23,7 @@ class TestFormatBetText:
             parlay_legs=[],
         )
         result = _format_bet_text(bet)
-        assert result == "周一001 胜平负 胜 ¥20"
+        assert result == "周一001 阿根廷vs法国 胜平负 胜 ¥20"
 
     def test_parlay_bet_format(self):
         """Parlay bet should format each leg + summary line."""
@@ -60,8 +60,8 @@ class TestFormatBetText:
         )
         result = _format_bet_text(bet)
         expected = (
-            "周一001 胜平负 胜\n"
-            "周一002 胜平负 平\n"
+            "周一001 阿根廷vs法国 胜平负 胜\n"
+            "周一002 美国vs日本 胜平负 平\n"
             "======== 2串1 组合赔率 4.25 ¥30"
         )
         assert result == expected
@@ -83,7 +83,7 @@ class TestFormatBetText:
             parlay_legs=[],
         )
         result = _format_bet_text(bet)
-        assert result == "周一003 让球 让胜 ¥19"
+        assert result == "周一003 德国vs巴西 让球 让胜 ¥19"
 
 
 class TestFormatStrategyText:
@@ -128,7 +128,7 @@ class TestFormatStrategyText:
             reasoning="基于规则模型",
         )
         result = _format_strategy_text(strategy)
-        expected = "周一001 胜平负 胜 ¥20\n\n周一002 胜平负 平 ¥10"
+        expected = "周一001 阿根廷vs法国 胜平负 胜 ¥20\n\n周一002 美国vs日本 胜平负 平 ¥10"
         assert result == expected
 
     def test_empty_strategy(self):
