@@ -67,7 +67,7 @@ class TestFormatBetText:
         assert result == expected
 
     def test_single_bet_with_fractional_stake(self):
-        """Stake should format as integer (round down to nearest 2)."""
+        """Stake should format as integer via :.0f formatting."""
         from stockbot.ui.worldcup_page import _format_bet_text
 
         bet = Bet(
@@ -77,13 +77,13 @@ class TestFormatBetText:
             play_type="让球",
             pick="让胜",
             odds=2.10,
-            stake=18.0,  # already a multiple of 2
+            stake=18.7,  # fractional, :.0f rounds to 19
             expected_value=0.22,
             confidence=0.60,
             parlay_legs=[],
         )
         result = _format_bet_text(bet)
-        assert result == "周一003 让球 让胜 ¥18"
+        assert result == "周一003 让球 让胜 ¥19"
 
 
 class TestFormatStrategyText:
