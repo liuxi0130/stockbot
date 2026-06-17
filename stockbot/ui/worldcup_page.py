@@ -59,12 +59,11 @@ def _format_strategy_text(strategy) -> str:
     return "\n\n".join(parts)
 
 
-def _render_copy_button(text: str, key: str):
+def _render_copy_button(text: str):
     """Render a one-click copy-to-clipboard button using JS Clipboard API.
 
     Args:
         text: The text to copy to clipboard.
-        key: Unique key for this button instance (required by Streamlit).
 
     The button is a self-contained HTML component that:
     - Copies ``text`` to clipboard on click via navigator.clipboard.writeText()
@@ -130,7 +129,7 @@ def _render_copy_button(text: str, key: str):
 ">📋 复制</button>
 </body>
 </html>"""
-    st.components.v1.html(html, height=32, scrolling=False, key=key)
+    st.components.v1.html(html, height=32, scrolling=False)
 
 
 def render_worldcup():
@@ -332,10 +331,7 @@ def _render_strategy_section(amount: float):
                     # ── Copy all button ──
                     strategy_text = _format_strategy_text(s)
                     if strategy_text:
-                        _render_copy_button(
-                            strategy_text,
-                            key=f"copy_all_{s.risk_level}",
-                        )
+                        _render_copy_button(strategy_text)
 
                     with st.expander("📝 策略说明", expanded=False):
                         st.caption(s.reasoning or "基于规则模型生成")
@@ -367,7 +363,6 @@ def _render_strategy_section(amount: float):
                                 # ── Copy button for this parlay ──
                                 _render_copy_button(
                                     _format_bet_text(b),
-                                    key=f"copy_parlay_{s.risk_level}_{idx}",
                                 )
                                 # Expandable legs
                                 with st.expander(f"查看{b.play_type}明细",
@@ -398,7 +393,6 @@ def _render_strategy_section(amount: float):
                                 # ── Copy button for this single bet ──
                                 _render_copy_button(
                                     _format_bet_text(b),
-                                    key=f"copy_single_{s.risk_level}_{b.match_id}",
                                 )
                                 st.divider()
                 else:
