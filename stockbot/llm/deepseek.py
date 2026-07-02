@@ -17,7 +17,8 @@ class DeepSeekProvider(LLMProvider):
             timeout=httpx.Timeout(30.0, connect=10.0),
         )
 
-    async def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:
+    async def chat(self, messages: list[dict], tools: list[dict] | None = None,
+                   tool_choice: str | None = None) -> LLMResponse:
         kwargs = dict(
             model=self.model,
             messages=messages,
@@ -26,6 +27,8 @@ class DeepSeekProvider(LLMProvider):
         )
         if tools:
             kwargs["tools"] = tools
+        if tool_choice:
+            kwargs["tool_choice"] = tool_choice
 
         resp = await self.client.chat.completions.create(**kwargs)
         choice = resp.choices[0]
@@ -46,7 +49,8 @@ class DeepSeekProvider(LLMProvider):
                    "completion_tokens": resp.usage.completion_tokens} if resp.usage else {},
         )
 
-    async def chat_stream(self, messages: list[dict], tools: list[dict] | None = None):
+    async def chat_stream(self, messages: list[dict], tools: list[dict] | None = None,
+                          tool_choice: str | None = None):
         kwargs = dict(
             model=self.model,
             messages=messages,
@@ -56,6 +60,8 @@ class DeepSeekProvider(LLMProvider):
         )
         if tools:
             kwargs["tools"] = tools
+        if tool_choice:
+            kwargs["tool_choice"] = tool_choice
 
         stream = await self.client.chat.completions.create(**kwargs)
         async for chunk in stream:

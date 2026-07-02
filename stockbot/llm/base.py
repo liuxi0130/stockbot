@@ -20,9 +20,11 @@ class LLMResponse:
 
 class LLMProvider(ABC):
     @abstractmethod
-    async def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:
+    async def chat(self, messages: list[dict], tools: list[dict] | None = None,
+                   tool_choice: str | None = None) -> LLMResponse:
         ...
 
     @abstractmethod
-    async def chat_stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncIterator[str]:
+    async def chat_stream(self, messages: list[dict], tools: list[dict] | None = None,
+                          tool_choice: str | None = None) -> AsyncIterator[str]:
         ...
